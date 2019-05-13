@@ -1,0 +1,25 @@
+name: proteins
+
+optimizer:
+  fn: torch.optim.Adam
+  kwargs:
+    lr: .001
+
+session:
+  epochs: 10
+  batch_size: 100
+  losses:
+    nodes: 1
+    globals: 1
+    l1: 0
+  data:
+    folder: ~/experiments/{name}/data
+  log:
+    folder: ~/experiments/{name}/runs/{tags}_{rand}
+    when:
+      - every batch
+  checkpoint:
+    folder: ~/experiments/{name}/runs/{tags}_{rand}
+    when:
+      #- every epoch
+      - last epoch

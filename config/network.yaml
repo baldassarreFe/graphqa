@@ -1,0 +1,4 @@
+model:
+  fn: proteins.networks.ProteinGN
+  kwargs:
+    hops: 10
