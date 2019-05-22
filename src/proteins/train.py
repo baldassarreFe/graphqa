@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error
+from scipy.stats import pearsonr
 from munch import AutoMunch, DefaultFactoryMunch
 
 import torch
@@ -208,9 +209,8 @@ del params
 # endregion
 
 # Datasets and dataloaders
-dataset = ProteinFile(Path(experiment.session.data.folder) / 'training_casp9_10.v4.h5')
-dataset_train, dataset_val = torch.utils.data.random_split(
-    dataset, [int(.8 * len(dataset)), len(dataset) - int(.8 * len(dataset))])
+dataset_train = ProteinFile(Path(experiment.session.data.folder) / 'training_casp9_10.v4.h5')
+dataset_val = ProteinFile(Path(experiment.session.data.folder) / 'validation_casp11.v4.h5')
 
 dataloader_kwargs = dict(
     num_workers=min(experiment.session.cpus, 1) if 'cuda' in experiment.session.device else experiment.session.cpus,
@@ -430,40 +430,53 @@ pd.options.display.expand_frame_repr = False
 graphs_df = pd.DataFrame({k: np.concatenate(v) for k, v in graphs_df.items()})
 
 experiment.rmse_global = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted']))
-experiment.R_global = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])
-experiment.R_global_per_target = graphs_df.groupby('ProteinName') \
+experiment.R2_global = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])
+experiment.R2_global_per_target = graphs_df.groupby('ProteinName') \
     .apply(lambda df: r2_score(df['GlobalScoreTrue'], df['GlobalScorePredicted'])) \
+    .mean()
+experiment.pearson_R_global = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])[0]
+experiment.pearson_R_global_per_target = graphs_df.groupby('ProteinName') \
+    .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScorePredicted'])[0]) \
     .mean()
 
 print('Global RMSE:', experiment.rmse_global)
-print('Global R:', experiment.R_global)
-print('Global R per target:', experiment.R_global_per_target)
+print('Global Pearson R:', experiment.pearson_R_global)
+print('Global Pearson R per target:', experiment.pearson_R_global_per_target)
+print('Global R2:', experiment.R2_global)
+print('Global R2 per target:', experiment.R2_global_per_target)
 
 nodes_df = pd.DataFrame({k: np.concatenate(v) for k, v in nodes_df.items()}).dropna(subset=['LocalScoreTrue'])
 
 experiment.rmse_local = np.sqrt(mean_squared_error(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted']))
-experiment.R_local = r2_score(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
-experiment.R_local_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
+experiment.R2_local = r2_score(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
+experiment.R2_local_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
     .apply(lambda df: r2_score(df['LocalScoreTrue'], df['LocalScorePredicted'])) \
     .mean()
+experiment.pearson_R_local = pearsonr(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])[0]
+experiment.pearson_R_local_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
+    .apply(lambda df: pearsonr(df['LocalScoreTrue'], df['LocalScorePredicted'])[0]) \
+    .mean()
 
-print('Local RMSE:', experiment.rmse_global)
-print('Local R:', experiment.R_global)
-print('Local R per model:', experiment.R_local_per_model)
+print('Local RMSE:', experiment.rmse_local)
+print('Local Pearson R:', experiment.pearson_R_local)
+print('Local Pearson R per model:', experiment.pearson_R_local_per_model)
+print('Local R2:', experiment.R2_local)
+print('Local R2 per model:', experiment.R2_local_per_model)
 
 if logger is not None:
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
+
     ax = axes[0]
-    graphs_df.plot.scatter('GlobalScoreTrue', 'GlobalScorePredicted', ax=ax, marker='.')
-    ax.set_title(f'Global Scores (R: {experiment.R_global})')
+    graphs_df.plot.scatter('GlobalScoreTrue', 'GlobalScorePredicted', ax=ax, marker='.', alpha=.1)
+    ax.set_title(f'Global Scores (R: {experiment.pearson_R_global:.3f} R2: {experiment.R2_global:.3f})')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
     ax = axes[1]
-    nodes_df.plot.scatter('LocalScoreTrue', 'LocalScorePredicted', ax=ax, marker='.')
-    ax.set_title(f'Local Scores (R: {experiment.R_local})')
+    nodes_df.plot.scatter('LocalScoreTrue', 'LocalScorePredicted', ax=ax, marker='.', alpha=.2)
+    ax.set_title(f'Local Scores (R: {experiment.pearson_R_local:.3f} R2: {experiment.R2_local:.3f})')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
     ax.set_xlim(0, 1)

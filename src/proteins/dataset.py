@@ -65,9 +65,9 @@ class ProteinModels(torch.utils.data.Dataset):
 
 class ProteinFile(torch.utils.data.ConcatDataset):
     def __init__(self, filepath):
-        h5_file = tables.open_file(filepath)
-        super(ProteinFile, self).__init__([
-            ProteinModels(filepath, protein._v_pathname[1:])
-            for protein in h5_file.list_nodes('/')
-        ])
+        with tables.open_file(filepath) as h5_file:
+            super(ProteinFile, self).__init__([
+                ProteinModels(filepath, protein._v_pathname[1:])
+                for protein in h5_file.list_nodes('/') if not protein._v_pathname.startswith('/casp')
+            ])
 
