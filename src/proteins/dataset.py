@@ -4,18 +4,20 @@ import torch.utils.data
 import numpy as np
 import torchgraphs as tg
 
+
 class ProteinModels(torch.utils.data.Dataset):
-    def __init__(self, filepath, protein_name, num_models):
+    def __init__(self, filepath, protein_name):
         self.filepath = filepath
         self.protein_name = protein_name
-        self.num_models = num_models
+        with tables.open_file(self.filepath) as h5_file:
+            self.num_models = len(h5_file.get_node(f'/{self.protein_name}').names)
 
     def __len__(self):
         return self.num_models
 
     def __getitem__(self, model_idx):
         with tables.open_file(self.filepath) as h5_file:
-            protein = h5_file.get_node(self.protein_name)
+            protein = h5_file.get_node(f'/{self.protein_name}')
 
             provider = protein.names[model_idx].decode('utf-8') # who built this model of the protein
 
@@ -63,8 +65,9 @@ class ProteinModels(torch.utils.data.Dataset):
 
 class ProteinFile(torch.utils.data.ConcatDataset):
     def __init__(self, filepath):
-        with tables.open_file(filepath) as h5_file:
-            super(ProteinFile, self).__init__([
-                ProteinModels(filepath, protein._v_pathname, len(protein.names))
-                for protein in h5_file.list_nodes('/')
-            ])
+        h5_file = tables.open_file(filepath)
+        super(ProteinFile, self).__init__([
+            ProteinModels(filepath, protein._v_pathname[1:])
+            for protein in h5_file.list_nodes('/')
+        ])
+

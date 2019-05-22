@@ -7,7 +7,7 @@ optimizer:
 
 session:
   epochs: 10
-  batch_size: 100
+  batch_size: 500
   losses:
     nodes: 1
     globals: 1
