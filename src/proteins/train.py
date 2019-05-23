@@ -54,7 +54,7 @@ experiment.sessions = []
 
 # Session defaults
 session = AutoMunch()
-session.losses = {'nodes': 0, 'globals': 0, 'l1': 0}
+session.losses = {'nodes': 0, 'globals': 0}
 session.seed = random.randint(0, 99)
 session.cpus = multiprocessing.cpu_count() - 1
 session.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -204,7 +204,7 @@ else:
 params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print('Parameters:', params)
 if logger is not None:
-    logger.add_text('Parameters', textwrap.indent(str(params), '    '), global_step=experiment.samples)
+    logger.add_scalar('misc/parameters', params, global_step=experiment.samples)
 del params
 # endregion
 
@@ -258,7 +258,6 @@ for epoch_idx in epoch_bar:
     train_bar_postfix = {}
     loss_nodes_avg = RunningStats()
     loss_global_avg = RunningStats()
-    loss_l1_avg = RunningStats()
     loss_total_avg = RunningStats()
 
     train_bar = tqdm.tqdm(desc=f'Train {experiment.epoch}', total=len(dataloader_train.dataset), unit='g')
@@ -288,14 +287,6 @@ for epoch_idx in epoch_bar:
             if 'every batch' in experiment.session.log.when:
                 logger.add_scalar('loss/train/global', loss_global.mean().item(), global_step=experiment.samples)
 
-        if experiment.session.losses.l1 > 0:
-            loss_l1 = sum([p.abs().sum() for p in model.parameters()])
-            loss_total += experiment.session.losses.l1 * loss_l1
-            loss_l1_avg.add(loss_l1.item(), len(graphs))
-            train_bar_postfix['L1'] = f'{loss_l1.item():.5f}'
-            if 'every batch' in experiment.session.log.when:
-                logger.add_scalar('loss/train/l1', loss_l1.item(), global_step=experiment.samples)
-
         loss_total_avg.add(loss_total.item(), len(graphs))
         train_bar_postfix['Total'] = f'{loss_total.item():.5f}'
         if 'every batch' in experiment.session.log.when:
@@ -308,7 +299,7 @@ for epoch_idx in epoch_bar:
         experiment.samples += len(graphs)
         train_bar.update(len(graphs))
         train_bar.set_postfix(train_bar_postfix)
-        # if batch_idx == 2:
+        # if batch_idx == 5:
         #     break
     train_bar.close()
 
@@ -321,10 +312,8 @@ for epoch_idx in epoch_bar:
             logger.add_scalar('loss/train/nodes', loss_nodes_avg.mean, global_step=experiment.samples)
         if experiment.session.losses.count > 0:
             logger.add_scalar('loss/train/global', loss_global_avg.mean, global_step=experiment.samples)
-        if experiment.session.losses.l1 > 0:
-            logger.add_scalar('loss/train/l1', loss_l1_avg.mean, global_step=experiment.samples)
 
-    del batch_idx, train_bar, train_bar_postfix, loss_nodes_avg, loss_global_avg, loss_l1_avg, loss_total_avg
+    del batch_idx, train_bar, train_bar_postfix, loss_nodes_avg, loss_global_avg, loss_total_avg
     # endregion
 
     # region Validation loop
@@ -335,8 +324,6 @@ for epoch_idx in epoch_bar:
     loss_nodes_avg = RunningStats()
     loss_global_avg = RunningStats()
     loss_total_avg = RunningStats()
-    loss_l1 = sum([p.abs().sum() for p in model.parameters()])
-    val_bar_postfix['L1'] = f'{loss_l1.item():.5f}'
 
     val_bar = tqdm.tqdm(desc=f'Val {experiment.epoch}', total=len(dataloader_val.dataset), unit='g')
     for batch_idx, (protein_name, model_name, graphs, targets) in enumerate(dataloader_val):
@@ -361,9 +348,6 @@ for epoch_idx in epoch_bar:
             loss_global_avg.add(loss_global.item(), len(graphs))
             val_bar_postfix['Global'] = f'{loss_global.item():.5f}'
 
-        if experiment.session.losses.l1 > 0:
-            loss_total += experiment.session.losses.l1 * loss_l1
-
         val_bar_postfix['Total'] = f'{loss_total.item():.5f}'
         loss_total_avg.add(loss_total.item(), len(graphs))
 
@@ -383,7 +367,7 @@ for epoch_idx in epoch_bar:
 
         val_bar.update(len(graphs))
         val_bar.set_postfix(val_bar_postfix)
-        # if batch_idx==2:
+        # if batch_idx == 5:
         #     break
     val_bar.close()
 
@@ -400,10 +384,8 @@ for epoch_idx in epoch_bar:
             logger.add_scalar('loss/val/nodes', loss_nodes_avg.mean, global_step=experiment.samples)
         if experiment.session.losses.globals > 0:
             logger.add_scalar('loss/val/global', loss_global_avg.mean, global_step=experiment.samples)
-        if experiment.session.losses.l1 > 0:
-            logger.add_scalar('loss/val/l1', loss_l1.item(), global_step=experiment.samples)
 
-    del batch_idx, val_bar, val_bar_postfix, loss_nodes_avg, loss_global_avg, loss_l1, loss_total_avg
+    del batch_idx, val_bar, val_bar_postfix, loss_nodes_avg, loss_global_avg, loss_total_avg
     # endregion
 
     # Saving
@@ -422,67 +404,63 @@ del epoch_bar, epoch_bar_postfix, epoch_idx
 # endregion
 
 # region Final report
-N = 100
-pd.options.display.precision = 2
-pd.options.display.max_columns = 999
-pd.options.display.expand_frame_repr = False
-
 graphs_df = pd.DataFrame({k: np.concatenate(v) for k, v in graphs_df.items()})
-
-experiment.rmse_global = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted']))
-experiment.R2_global = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])
-experiment.R2_global_per_target = graphs_df.groupby('ProteinName') \
+experiment.metrics = {'globals': {}, 'local': {}}
+experiment.metrics.globals.rmse = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted']))
+experiment.metrics.globals.R2 = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])
+experiment.metrics.globals.R2_per_target = graphs_df.groupby('ProteinName') \
     .apply(lambda df: r2_score(df['GlobalScoreTrue'], df['GlobalScorePredicted'])) \
     .mean()
-experiment.pearson_R_global = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])[0]
-experiment.pearson_R_global_per_target = graphs_df.groupby('ProteinName') \
+experiment.metrics.globals.pearson_R = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])[0]
+experiment.metrics.globals.pearson_R_per_target = graphs_df.groupby('ProteinName') \
     .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScorePredicted'])[0]) \
     .mean()
 
-print('Global RMSE:', experiment.rmse_global)
-print('Global Pearson R:', experiment.pearson_R_global)
-print('Global Pearson R per target:', experiment.pearson_R_global_per_target)
-print('Global R2:', experiment.R2_global)
-print('Global R2 per target:', experiment.R2_global_per_target)
-
 nodes_df = pd.DataFrame({k: np.concatenate(v) for k, v in nodes_df.items()}).dropna(subset=['LocalScoreTrue'])
-
-experiment.rmse_local = np.sqrt(mean_squared_error(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted']))
-experiment.R2_local = r2_score(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
-experiment.R2_local_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
+experiment.metrics.local.rmse = np.sqrt(mean_squared_error(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted']))
+experiment.metrics.local.R2 = r2_score(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
+experiment.metrics.local.R2_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
     .apply(lambda df: r2_score(df['LocalScoreTrue'], df['LocalScorePredicted'])) \
     .mean()
-experiment.pearson_R_local = pearsonr(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])[0]
-experiment.pearson_R_local_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
+experiment.metrics.local.pearson_R = pearsonr(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])[0]
+experiment.metrics.local.pearson_R_per_model = nodes_df.groupby(['ProteinName', 'ModelName']) \
     .apply(lambda df: pearsonr(df['LocalScoreTrue'], df['LocalScorePredicted'])[0]) \
     .mean()
 
-print('Local RMSE:', experiment.rmse_local)
-print('Local Pearson R:', experiment.pearson_R_local)
-print('Local Pearson R per model:', experiment.pearson_R_local_per_model)
-print('Local R2:', experiment.R2_local)
-print('Local R2 per model:', experiment.R2_local_per_model)
+pyaml.pprint(experiment.metrics, sort_dicts=False, width=200)
 
 if logger is not None:
+    for sub in ['local', 'globals']:
+        for name, value in experiment.metrics[sub].items():
+            logger.add_scalar(f'metric/{sub}/{name}', value, global_step=experiment.samples)
+
     fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
 
     ax = axes[0]
-    graphs_df.plot.scatter('GlobalScoreTrue', 'GlobalScorePredicted', ax=ax, marker='.', alpha=.1)
-    ax.set_title(f'Global Scores (R: {experiment.pearson_R_global:.3f} R2: {experiment.R2_global:.3f})')
+    ax.hist2d(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'], bins=np.linspace(0, 1, 100+1))
+    ax.set_title(f'Local Scores (R: {experiment.metrics.local.pearson_R:.3f} R2: {experiment.metrics.local.R2:.3f})')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
     ax = axes[1]
-    nodes_df.plot.scatter('LocalScoreTrue', 'LocalScorePredicted', ax=ax, marker='.', alpha=.2)
-    ax.set_title(f'Local Scores (R: {experiment.pearson_R_local:.3f} R2: {experiment.R2_local:.3f})')
+    ax.hist2d(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'], bins=np.linspace(0, 1, 100+1))
+    ax.set_title(f'Global Scores (R: {experiment.metrics.globals.pearson_R:.3f} R2: {experiment.metrics.globals.R2:.3f})')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
     logger.add_figure('metrics', fig, global_step=experiment.samples, close=True)
+
+    logger.add_text(
+        'Experiment', textwrap.indent(pyaml.dump(experiment, safe=True, sort_dicts=False), '    '), experiment.samples)
+
+# N = 100
+# pd.options.display.precision = 2
+# pd.options.display.max_columns = 999
+# pd.options.display.expand_frame_repr = False
 
 # # Split the results in ranges based on the number of nodes and compute the average loss per range
 # df_losses_by_node_range = graphs_df \
@@ -534,7 +512,9 @@ del graphs_df, nodes_df
 # endregion
 
 # region Cleanup
+if saver is not None:
+    saver.save_experiment(experiment, suffix=f'e{experiment.epoch:04d}')
+
 if logger is not None:
     logger.close()
-exit()
 # endregion

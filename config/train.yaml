@@ -4,6 +4,7 @@ optimizer:
   fn: torch.optim.Adam
   kwargs:
     lr: .001
+    weight_decay: 0
 
 session:
   epochs: 10
@@ -11,7 +12,6 @@ session:
   losses:
     nodes: 1
     globals: 1
-    l1: 0
   data:
     folder: ~/experiments/{name}/data
   log:
