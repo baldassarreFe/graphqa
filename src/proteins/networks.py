@@ -11,9 +11,9 @@ class ProteinGN(nn.Module):
         self.hops = hops
 
         self.encoder = nn.Sequential(OrderedDict([
-            ('edge', tg.EdgeLinear(out_features=8, edge_features=1, sender_features=60)),
+            ('edge', tg.EdgeLinear(out_features=8, edge_features=1, sender_features=83)),
             ('edge_relu', tg.EdgeReLU()),
-            ('node', tg.NodeLinear(out_features=16, incoming_features=8, node_features=60, aggregation='mean')),
+            ('node', tg.NodeLinear(out_features=16, incoming_features=8, node_features=83, aggregation='mean')),
             ('node_relu', tg.NodeReLU()),
             ('global', tg.GlobalLinear(out_features=4, edge_features=8, node_features=16, aggregation='mean')),
             ('global_relu', tg.GlobalReLU()),
