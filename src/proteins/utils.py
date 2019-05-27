@@ -21,9 +21,22 @@ def git_info():
             result['commit'] = repo.head.commit.hexsha
             result['dirty'] = repo.is_dirty()
             if repo.is_dirty():
-                result['diffs'] = [str(diff) for diff in repo.head.commit.diff(other=None, create_patch=True)]
+                # This creates a line-by-line diff, but it's usually too much
+                # result['changes'] = [str(diff) for diff in repo.head.commit.diff(other=None, create_patch=True)]
+                result['changes'] = []
+                for diff in repo.head.commit.diff(other=None):
+                    if diff.new_file:
+                        result['changes'].append(f'{diff.change_type} {diff.b_path}')
+                    elif diff.deleted_file:
+                        result['changes'].append(f'{diff.change_type} {diff.a_path}')
+                    elif diff.renamed_file:
+                        result['changes'].append(f'{diff.change_type} {diff.a_path} -> {diff.b_path}')
+                    else:
+                        result['changes'].append(f'{diff.change_type} {diff.b_path}')
             if len(repo.untracked_files) > 0:
-                result['untracked_files'] = repo.untracked_files
+                # This would list the names of untracked files, which maybe is not desired
+                # result['untracked_files'] = repo.untracked_files
+                result['untracked_files'] = len(repo.untracked_files)
             return result
         except (git.InvalidGitRepositoryError, ValueError):
             pass

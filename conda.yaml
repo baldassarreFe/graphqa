@@ -19,6 +19,8 @@ dependencies:
   - expat=2.2.6=he6710b0_0
   - fontconfig=2.13.0=h9420a91_0
   - freetype=2.9.1=h8a8886c_1
+  - gitdb2=2.0.5=py37_0
+  - gitpython=2.1.11=py37_0
   - glib=2.56.2=hd408876_0
   - gst-plugins-base=1.14.0=hbbd80ab_1
   - gstreamer=1.14.0=hb453b48_1
@@ -30,6 +32,7 @@ dependencies:
   - ipython_genutils=0.2.0=py37_0
   - jedi=0.13.3=py37_0
   - jinja2=2.10.1=py37_0
+  - joblib=0.13.2=py37_0
   - jpeg=9b=h024ee3a_2
   - jupyter_client=5.2.4=py37_0
   - jupyter_core=4.4.0=py37_0
@@ -88,12 +91,13 @@ dependencies:
   - pyzmq=18.0.0=py37he6710b0_0
   - qt=5.9.7=h5867ecd_1
   - readline=7.0=h7b6447c_5
-  - scikit-learn=0.20.3=py37hd81dba3_0
+  - scikit-learn=0.21.1=py37hd81dba3_0
   - scipy=1.2.1=py37h7c811a0_0
   - seaborn=0.9.0=py37_0
   - setuptools=41.0.1=py37_0
   - sip=4.19.8=py37hf484d3e_0
   - six=1.12.0=py37_0
+  - smmap2=2.0.5=py37_0
   - snappy=1.1.7=hbae5bb6_3
   - sqlite=3.28.0=h7b6447c_0
   - statsmodels=0.9.0=py37h035aef0_0
