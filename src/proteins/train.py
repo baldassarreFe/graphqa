@@ -213,7 +213,7 @@ dataset_train = ProteinFile(Path(ex.session.data.folder) / 'training_casp9_10.v4
 dataset_val = ProteinFile(Path(ex.session.data.folder) / 'validation_casp11.v4.h5')
 
 dataloader_kwargs = dict(
-    num_workers=min(ex.session.cpus, 1) if 'cuda' in ex.session.device else ex.session.cpus,
+    num_workers=ex.session.cpus,
     pin_memory='cuda' in ex.session.device,
     worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed()) % (2 ** 32 - 1)),
     batch_size=ex.session.batch_size,
