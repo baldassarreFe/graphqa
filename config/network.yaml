@@ -1,4 +1,7 @@
 model:
   fn: proteins.networks.ProteinGN
   kwargs:
+    node_features: 83
+    edge_features: 1
+    aggregation: mean
     hops: 10
