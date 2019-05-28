@@ -3,6 +3,7 @@ import yaml
 import pyaml
 import random
 import textwrap
+import namesgenerator
 import multiprocessing
 
 from pathlib import Path
@@ -142,7 +143,7 @@ if 'cuda' in session.device:
     session.cuda = cuda_info()
 
 # Resolving paths
-rand_id = ''.join(chr(random.randint(ord('A'), ord('Z'))) for _ in range(6))
+rand_id = namesgenerator.get_random_name()
 session.data.folder = Path(session.data.folder.replace('{name}', ex.name)).expanduser().resolve().as_posix()
 session.log.folder = session.log.folder \
     .replace('{name}', ex.name) \

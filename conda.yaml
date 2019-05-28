@@ -117,6 +117,7 @@ dependencies:
     - future==0.17.1
     - grpcio==1.20.1
     - markdown==3.1
+    - namesgenerator==0.3
     - protobuf==3.7.1
     - tb-nightly==1.14.0a20190512
     - torch-scatter==1.2.0
