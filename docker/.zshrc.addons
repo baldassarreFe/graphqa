@@ -1,0 +1,9 @@
+# Conda autocompletion
+fpath+="${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/completions/conda-zsh-completion"
+compinit conda
+
+# Aliases
+alias jl='jupyter lab'
+alias jc='jupyter console'
+alias py='python3'
+alias tb='tensorboard --logdir'
