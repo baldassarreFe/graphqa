@@ -6,52 +6,52 @@ import torchgraphs as tg
 
 
 class ProteinGN(nn.Module):
-    def __init__(self, node_features, edge_features, aggregation='mean', hops=1):
+    def __init__(self, node_features, edge_features, aggregation='mean', hops=1, hidden=4):
         super().__init__()
         self.hops = hops
 
-        # Edge feature shape: 1 -> 4 -> 8
-        # Node feature shape: 83 -> 32 -> 16
-        # Global feature shape: None -> 4
+        # Edge feature shape: 1 -> hidden -> 2*hidden
+        # Node feature shape: 83 -> 8*hidden -> 4*hidden
+        # Global feature shape: None -> hidden
         self.encoder = nn.Sequential(
             nn.Sequential(OrderedDict({
-                'edge': tg.EdgeLinear(out_features=4, edge_features=edge_features),
+                'edge': tg.EdgeLinear(out_features=hidden, edge_features=edge_features),
                 'edge_relu': tg.EdgeReLU(),
-                'node': tg.NodeLinear(out_features=32, node_features=node_features),
+                'node': tg.NodeLinear(out_features=8 * hidden, node_features=node_features),
                 'node_relu': tg.NodeReLU(),
             })),
             nn.Sequential(OrderedDict({
-                'edge': tg.EdgeLinear(out_features=8, edge_features=4),
+                'edge': tg.EdgeLinear(out_features=2 * hidden, edge_features=hidden),
                 'edge_relu': tg.EdgeReLU(),
-                'node': tg.NodeLinear(out_features=16, node_features=32),
+                'node': tg.NodeLinear(out_features=4 * hidden, node_features=8 * hidden),
                 'node_relu': tg.NodeReLU(),
-                'global': tg.GlobalLinear(node_features=16, out_features=4, aggregation='mean'),
+                'global': tg.GlobalLinear(out_features=hidden, node_features=4 * hidden, aggregation='mean'),
             }))
         )
 
-        # Edge feature shape: 8 -> 8
-        # Node feature shape: 16 -> 16
-        # Global feature shape: 4 -> 4
+        # Edge feature shape: 2*hidden -> 2*hidden
+        # Node feature shape: 4*hidden -> 4*hidden
+        # Global feature shape: hidden -> hidden
         self.hidden = nn.Sequential(OrderedDict({
-            'edge': tg.EdgeLinear(
-                out_features=8, edge_features=8, sender_features=16, global_features=4),
+            'edge': tg.EdgeLinear(out_features=2 * hidden,
+                                  edge_features=2 * hidden, sender_features=4 * hidden, global_features=hidden),
             'edge_relu': tg.EdgeReLU(),
-            'node': tg.NodeLinear(
-                out_features=16, node_features=16, incoming_features=8, global_features=4, aggregation=aggregation),
+            'node': tg.NodeLinear(out_features=4 * hidden, aggregation=aggregation,
+                                  node_features=4 * hidden, incoming_features=2 * hidden, global_features=hidden),
             'node_relu': tg.NodeReLU(),
-            'global': tg.GlobalLinear(
-                out_features=4, edge_features=8, node_features=16, global_features=4, aggregation=aggregation),
+            'global': tg.GlobalLinear(out_features=hidden, aggregation=aggregation,
+                                      edge_features=2 * hidden, node_features=4 * hidden, global_features=hidden),
             'global_relu': tg.GlobalReLU(),
         }))
 
-        # Node feature shape: 16 -> 1
-        # Global feature shape: 4 -> 1
+        # Node feature shape: 4*hidden -> 1
+        # Global feature shape: hidden -> 1
         self.readout_nodes = nn.Sequential(OrderedDict({
-            'node': tg.NodeLinear(1, node_features=16),
+            'node': tg.NodeLinear(1, node_features=4 * hidden),
             'node_sigmoid': tg.NodeSigmoid()
         }))
         self.readout_globals = nn.Sequential(OrderedDict({
-            'global': tg.GlobalLinear(1, global_features=4),
+            'global': tg.GlobalLinear(1, global_features=hidden),
             'global_sigmoid': tg.GlobalSigmoid()
         }))
 

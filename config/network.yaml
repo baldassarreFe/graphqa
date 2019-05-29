@@ -5,3 +5,4 @@ model:
     edge_features: 1
     aggregation: mean
     hops: 10
+    hidden: 4
