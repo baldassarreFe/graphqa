@@ -61,7 +61,10 @@ class ProteinGN(nn.Module):
         graphs = self.encoder(graphs)
 
         for hop in range(self.hops):
-            graphs = self.hidden(graphs)
+            residual = self.hidden(graphs)
+            graphs.node_features = graphs.node_features + residual.node_features
+            graphs.edge_features = graphs.edge_features + residual.edge_features
+            graphs.global_features = graphs.global_features + residual.global_features
 
         nodes = self.readout_nodes(graphs).node_features
         globals = self.readout_globals(graphs).global_features
