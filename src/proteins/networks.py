@@ -6,7 +6,13 @@ import torchgraphs as tg
 
 
 class ProteinGN(nn.Module):
-    def __init__(self, node_features, edge_features, aggregation='mean', hops=1, hidden=4):
+    def __init__(
+            self, node_features, edge_features,
+            aggregation='mean',
+            hops=1,
+            hidden=4,
+            dropout=0
+    ):
         super().__init__()
         self.hops = hops
 
@@ -17,15 +23,21 @@ class ProteinGN(nn.Module):
             nn.Sequential(OrderedDict({
                 'edge': tg.EdgeLinear(out_features=hidden, edge_features=edge_features),
                 'edge_relu': tg.EdgeReLU(),
+                'edge_dropout': tg.EdgeDropout(p=dropout),
                 'node': tg.NodeLinear(out_features=8 * hidden, node_features=node_features),
                 'node_relu': tg.NodeReLU(),
+                'node_dropout': tg.NodeDropout(p=dropout),
             })),
             nn.Sequential(OrderedDict({
                 'edge': tg.EdgeLinear(out_features=2 * hidden, edge_features=hidden),
                 'edge_relu': tg.EdgeReLU(),
+                'edge_dropout': tg.EdgeDropout(p=dropout),
                 'node': tg.NodeLinear(out_features=4 * hidden, node_features=8 * hidden),
                 'node_relu': tg.NodeReLU(),
+                'node_dropout': tg.NodeDropout(p=dropout),
                 'global': tg.GlobalLinear(out_features=hidden, node_features=4 * hidden, aggregation='mean'),
+                'global_relu': tg.GlobalReLU(),
+                'global_dropout': tg.GlobalDropout(p=dropout),
             }))
         )
 
@@ -36,12 +48,15 @@ class ProteinGN(nn.Module):
             'edge': tg.EdgeLinear(out_features=2 * hidden,
                                   edge_features=2 * hidden, sender_features=4 * hidden, global_features=hidden),
             'edge_relu': tg.EdgeReLU(),
+            'edge_dropout': tg.EdgeDropout(p=dropout),
             'node': tg.NodeLinear(out_features=4 * hidden, aggregation=aggregation,
                                   node_features=4 * hidden, incoming_features=2 * hidden, global_features=hidden),
             'node_relu': tg.NodeReLU(),
+            'node_dropout': tg.NodeDropout(p=dropout),
             'global': tg.GlobalLinear(out_features=hidden, aggregation=aggregation,
                                       edge_features=2 * hidden, node_features=4 * hidden, global_features=hidden),
             'global_relu': tg.GlobalReLU(),
+            'global_dropout': tg.GlobalDropout(p=dropout),
         }))
 
         # Node feature shape: 4*hidden -> 1
@@ -61,10 +76,7 @@ class ProteinGN(nn.Module):
         graphs = self.encoder(graphs)
 
         for hop in range(self.hops):
-            residual = self.hidden(graphs)
-            graphs.node_features = graphs.node_features + residual.node_features
-            graphs.edge_features = graphs.edge_features + residual.edge_features
-            graphs.global_features = graphs.global_features + residual.global_features
+            graphs = self.hidden(graphs)
 
         nodes = self.readout_nodes(graphs).node_features
         globals = self.readout_globals(graphs).global_features

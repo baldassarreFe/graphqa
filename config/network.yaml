@@ -6,3 +6,4 @@ model:
     aggregation: mean
     hops: 10
     hidden: 4
+    dropout: .5
