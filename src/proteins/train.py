@@ -430,6 +430,10 @@ ex.metrics.local.pearson_R_per_model = nodes_df.groupby(['ProteinName', 'ModelNa
 
 pyaml.pprint(ex.metrics, sort_dicts=False, width=200)
 
+if 'cuda' in ex.session.device:
+    ex.session.cuda.memory_used_max = f'{torch.cuda.max_memory_allocated(ex.session.device) // (10**6)} MiB'
+    print('Max GPU memory used:', ex.session.cuda.memory_used_max)
+
 if logger is not None:
     for sub in ['local', 'globals']:
         for name, value in ex.metrics[sub].items():

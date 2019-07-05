@@ -7,7 +7,7 @@ optimizer:
     weight_decay: 0
 
 session:
-  epochs: 10
+  epochs: 15
   batch_size: 500
   losses:
     nodes: 1

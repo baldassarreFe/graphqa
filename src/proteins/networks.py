@@ -1,5 +1,6 @@
 import math
 from collections import OrderedDict
+import torch
 from torch import nn
 
 import torchgraphs as tg
@@ -7,66 +8,92 @@ import torchgraphs as tg
 
 class ProteinGN(nn.Module):
     def __init__(
-            self, node_features, edge_features,
-            aggregation='mean',
-            hops=1,
-            hidden=4,
+            self,
+            layers=1,
+            size_edges=2,
+            size_nodes=4,
+            size_globals=1,
             dropout=0
     ):
         super().__init__()
-        self.hops = hops
+        self.layers = []
 
-        # Edge feature shape: 1 -> hidden -> 2*hidden
-        # Node feature shape: 83 -> 8*hidden -> 4*hidden
-        # Global feature shape: None -> hidden
-        self.encoder = nn.Sequential(
-            nn.Sequential(OrderedDict({
-                'edge': tg.EdgeLinear(out_features=hidden, edge_features=edge_features),
+        # Edge feature shape: 1 -> 4 -> 8
+        # Node feature shape: 83 -> 32 -> 16
+        # Global feature shape: None -> 4
+        self.encoder = nn.Sequential(OrderedDict({
+            'edge1': tg.EdgeLinear(out_features=4, edge_features=1),
+            'edge1_relu': tg.EdgeReLU(),
+            'edge1_dropout': tg.EdgeDropout(p=dropout),
+            'edge2': tg.EdgeLinear(out_features=8, edge_features=4),
+            'edge2_relu': tg.EdgeReLU(),
+            'edge2_dropout': tg.EdgeDropout(p=dropout),
+
+            'node1': tg.NodeLinear(out_features=32, node_features=83),
+            'node1_relu': tg.NodeReLU(),
+            'node1_dropout': tg.NodeDropout(p=dropout),
+            'node2': tg.NodeLinear(out_features=16, node_features=32),
+            'node2_relu': tg.NodeReLU(),
+            'node2_dropout': tg.NodeDropout(p=dropout),
+
+            'global': tg.GlobalLinear(out_features=4, bias=True),
+            'global_relu': tg.GlobalReLU(),
+            'global_dropout': tg.GlobalDropout(p=dropout),
+        }),
+        )
+
+        # Edge, node and global shapes linearly decrease from (8, 16, 4)
+        # to the sizes given as parameters (e.g. 4, 2, 1)
+        # in the number of steps given as parameter (e.g. 10)
+
+        hidden_size_edges = torch.linspace(8, size_edges, layers+1).int().tolist()
+        hidden_size_nodes = torch.linspace(16, size_nodes, layers+1).int().tolist()
+        hidden_size_globals= torch.linspace(4, size_globals, layers+1).int().tolist()
+
+        for in_e, in_n, in_g, out_e, out_n, out_g in zip(
+            hidden_size_edges, hidden_size_nodes, hidden_size_globals,
+            hidden_size_edges[1:], hidden_size_nodes[1:], hidden_size_globals[1:]
+        ):
+            layer = nn.Sequential(OrderedDict({
+                'edge': tg.EdgeLinear(
+                    out_features=out_e,
+                    edge_features=in_e,
+                    sender_features=in_n,
+                    global_features=in_g
+                ),
                 'edge_relu': tg.EdgeReLU(),
                 'edge_dropout': tg.EdgeDropout(p=dropout),
-                'node': tg.NodeLinear(out_features=8 * hidden, node_features=node_features),
+
+                'node': tg.NodeLinear(
+                    out_features=out_n,
+                    node_features=in_n,
+                    incoming_features=out_e,
+                    global_features=in_g,
+                    aggregation='mean',
+                ),
                 'node_relu': tg.NodeReLU(),
                 'node_dropout': tg.NodeDropout(p=dropout),
-            })),
-            nn.Sequential(OrderedDict({
-                'edge': tg.EdgeLinear(out_features=2 * hidden, edge_features=hidden),
-                'edge_relu': tg.EdgeReLU(),
-                'edge_dropout': tg.EdgeDropout(p=dropout),
-                'node': tg.NodeLinear(out_features=4 * hidden, node_features=8 * hidden),
-                'node_relu': tg.NodeReLU(),
-                'node_dropout': tg.NodeDropout(p=dropout),
-                'global': tg.GlobalLinear(out_features=hidden, node_features=4 * hidden, aggregation='mean'),
+
+                'global': tg.GlobalLinear(
+                    out_features=out_g,
+                    edge_features=out_e,
+                    node_features=out_n,
+                    global_features=in_g,
+                    aggregation='mean',
+                ),
                 'global_relu': tg.GlobalReLU(),
                 'global_dropout': tg.GlobalDropout(p=dropout),
             }))
-        )
+            self.layers.append(layer)
 
-        # Edge feature shape: 2*hidden -> 2*hidden
-        # Node feature shape: 4*hidden -> 4*hidden
-        # Global feature shape: hidden -> hidden
-        self.hidden = nn.Sequential(OrderedDict({
-            'edge': tg.EdgeLinear(out_features=2 * hidden,
-                                  edge_features=2 * hidden, sender_features=4 * hidden, global_features=hidden),
-            'edge_relu': tg.EdgeReLU(),
-            'edge_dropout': tg.EdgeDropout(p=dropout),
-            'node': tg.NodeLinear(out_features=4 * hidden, aggregation=aggregation,
-                                  node_features=4 * hidden, incoming_features=2 * hidden, global_features=hidden),
-            'node_relu': tg.NodeReLU(),
-            'node_dropout': tg.NodeDropout(p=dropout),
-            'global': tg.GlobalLinear(out_features=hidden, aggregation=aggregation,
-                                      edge_features=2 * hidden, node_features=4 * hidden, global_features=hidden),
-            'global_relu': tg.GlobalReLU(),
-            'global_dropout': tg.GlobalDropout(p=dropout),
-        }))
+        self.layers = torch.nn.Sequential(OrderedDict({f'layer_{i}': l for i, l in enumerate(self.layers)}))
 
-        # Node feature shape: 4*hidden -> 1
-        # Global feature shape: hidden -> 1
-        self.readout_nodes = nn.Sequential(OrderedDict({
-            'node': tg.NodeLinear(1, node_features=4 * hidden),
-            'node_sigmoid': tg.NodeSigmoid()
-        }))
-        self.readout_globals = nn.Sequential(OrderedDict({
-            'global': tg.GlobalLinear(1, global_features=hidden),
+        # Node feature shape: size_nodes -> 1
+        # Global feature shape: size_globals -> 1
+        self.readout = nn.Sequential(OrderedDict({
+            'node': tg.NodeLinear(1, node_features=size_nodes),
+            'node_sigmoid': tg.NodeSigmoid(),
+            'global': tg.GlobalLinear(1, global_features=size_globals, node_features=1, aggregation='mean'),
             'global_sigmoid': tg.GlobalSigmoid()
         }))
 
@@ -74,19 +101,15 @@ class ProteinGN(nn.Module):
 
     def forward(self, graphs):
         graphs = self.encoder(graphs)
-
-        for hop in range(self.hops):
-            graphs = self.hidden(graphs)
-
-        nodes = self.readout_nodes(graphs).node_features
-        globals = self.readout_globals(graphs).global_features
+        graphs = self.layers(graphs)
+        graphs = self.readout(graphs)
 
         return graphs.evolve(
-            node_features=nodes,
+            node_features=graphs.node_features,
             num_edges=0,
             num_edges_by_graph=None,
             edge_features=None,
-            global_features=globals,
+            global_features=graphs.global_features,
             senders=None,
             receivers=None
         )
