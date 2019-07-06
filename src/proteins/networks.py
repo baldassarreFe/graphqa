@@ -18,37 +18,35 @@ class ProteinGN(nn.Module):
         super().__init__()
         self.layers = []
 
-        # Edge feature shape: 1 -> 4 -> 8
-        # Node feature shape: 83 -> 32 -> 16
-        # Global feature shape: None -> 4
+        # Edge feature shape: 2 -> 4 -> 16
+        # Node feature shape: 83 -> 64 -> 32
+        # Global feature shape: None -> 8
         self.encoder = nn.Sequential(OrderedDict({
-            'edge1': tg.EdgeLinear(out_features=4, edge_features=1),
+            'edge1': tg.EdgeLinear(out_features=4, edge_features=2),
             'edge1_relu': tg.EdgeReLU(),
             'edge1_dropout': tg.EdgeDropout(p=dropout),
-            'edge2': tg.EdgeLinear(out_features=8, edge_features=4),
+            'edge2': tg.EdgeLinear(out_features=16, edge_features=4),
             'edge2_relu': tg.EdgeReLU(),
             'edge2_dropout': tg.EdgeDropout(p=dropout),
 
-            'node1': tg.NodeLinear(out_features=32, node_features=83),
+            'node1': tg.NodeLinear(out_features=64, node_features=83),
             'node1_relu': tg.NodeReLU(),
             'node1_dropout': tg.NodeDropout(p=dropout),
-            'node2': tg.NodeLinear(out_features=16, node_features=32),
+            'node2': tg.NodeLinear(out_features=32, node_features=64),
             'node2_relu': tg.NodeReLU(),
             'node2_dropout': tg.NodeDropout(p=dropout),
 
-            'global': tg.GlobalLinear(out_features=4, bias=True),
+            'global': tg.GlobalLinear(out_features=8, bias=True),
             'global_relu': tg.GlobalReLU(),
             'global_dropout': tg.GlobalDropout(p=dropout),
-        }),
-        )
+        }))
 
-        # Edge, node and global shapes linearly decrease from (8, 16, 4)
-        # to the sizes given as parameters (e.g. 4, 2, 1)
+        # Edge, node and global shapes linearly decrease from (16, 32, 8)
+        # to the sizes given as parameters (e.g. 2, 4, 1)
         # in the number of steps given as parameter (e.g. 10)
-
-        hidden_size_edges = torch.linspace(8, size_edges, layers+1).int().tolist()
-        hidden_size_nodes = torch.linspace(16, size_nodes, layers+1).int().tolist()
-        hidden_size_globals= torch.linspace(4, size_globals, layers+1).int().tolist()
+        hidden_size_edges = torch.linspace(16, size_edges, layers+1).int().tolist()
+        hidden_size_nodes = torch.linspace(32, size_nodes, layers+1).int().tolist()
+        hidden_size_globals= torch.linspace(8, size_globals, layers+1).int().tolist()
 
         for in_e, in_n, in_g, out_e, out_n, out_g in zip(
             hidden_size_edges, hidden_size_nodes, hidden_size_globals,

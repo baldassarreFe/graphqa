@@ -8,7 +8,8 @@ import torchgraphs as tg
 # TODO add missing residues, add sequence info
 
 class ProteinModels(torch.utils.data.Dataset):
-    def __init__(self, filepath, protein_name):
+    def __init__(self, filepath, protein_name, cutoff=10):
+        self.cutoff = cutoff
         self.filepath = filepath
         self.protein_name = protein_name
         with tables.open_file(self.filepath) as h5_file:
@@ -46,7 +47,7 @@ class ProteinModels(torch.utils.data.Dataset):
             global_score = protein.lddt_global[model_idx]  # Quality score of the whole model
             # valid_scores = protein.valid[model_idx]      # Whether the local score is valid or not
 
-            senders, receivers, distances = ProteinModels.make_edges(coordinates)
+            senders, receivers, edge_features = self.make_edges(coordinates)
 
             graph_in = tg.Graph(
                 num_nodes=sequence_length,
@@ -57,10 +58,10 @@ class ProteinModels(torch.utils.data.Dataset):
                     dssp_features,
                     structure_determined[:, None] * 2 - 1
                 ], axis=1)).float(),
-                num_edges=2 * len(distances),
+                num_edges=2 * len(edge_features),
                 senders=torch.from_numpy(np.concatenate((senders, receivers))),
                 receivers=torch.from_numpy(np.concatenate((receivers, senders))),
-                edge_features=torch.from_numpy(distances).repeat(2).view(-1, 1).float()
+                edge_features=torch.from_numpy(edge_features).repeat(2, 1).float()
             )
             graph_target = tg.Graph(
                 num_nodes=sequence_length,
@@ -70,35 +71,39 @@ class ProteinModels(torch.utils.data.Dataset):
 
             return self.protein_name[1:], provider, graph_in, graph_target
 
-    @staticmethod
-    def make_edges(coords):
+    def make_edges(self, coords):
+        # The distances are returned in a condensed upper triangular form without the diagonal
         distances = scipy.spatial.distance.pdist(coords)
         senders, receivers = np.triu_indices(len(coords), k=1)
+        idx_diagonal = receivers - senders == 1  # indexes of adjacent residues
 
-        # The distance between adjacent residues might be missing because the residues don't have 3D coordinates,
-        # we set it to the average distance between adjacent residues
-        to_fill = np.logical_and(receivers - senders == 1, np.isnan(distances))
+        # Chemically bonded adjacent residues = 1, non connected but close enough residues = 0
+        edge_type = np.zeros_like(distances)
+        edge_type[idx_diagonal] = 1
+
+        # The distance between adjacent residues might be missing because the residues don't have 3D coordinates
+        # in this particular model, we set it to the a random distance with mean and variance equal to
+        # the mean and variance of the distance between adjacent residues in the whole dataset
+        to_fill = np.logical_and(idx_diagonal, np.isnan(distances))
         distances[to_fill] = np.random.normal(5.349724573740155, 0.9130922391969375, np.count_nonzero(to_fill))
 
-        # Distances over 10 Angstrom are considered irrelevant
+        # Distances greater that cutoff (in Angstrom) are considered irrelevant
         with np.errstate(invalid='ignore'):
-            is_relevant = distances < 10
+            is_relevant = distances < self.cutoff
 
         senders = senders[is_relevant]
         receivers = receivers[is_relevant]
         distances = distances[is_relevant]
+        edge_type = edge_type[is_relevant]
 
-        # f(5) = 1.0, f(10) = .01
-        distances = np.exp((distances - 5) * np.log(.01) / 5)
-
-        return senders, receivers, distances
+        return senders, receivers, np.vstack((distances, edge_type)).transpose()
 
 
 class ProteinFile(torch.utils.data.ConcatDataset):
-    def __init__(self, filepath):
+    def __init__(self, filepath, cutoff):
         with tables.open_file(filepath) as h5_file:
             super(ProteinFile, self).__init__([
-                ProteinModels(filepath, protein._v_pathname[1:])
+                ProteinModels(filepath, protein._v_pathname[1:], cutoff)
                 for protein in h5_file.list_nodes('/') if not protein._v_pathname.startswith('/casp')
             ])
 

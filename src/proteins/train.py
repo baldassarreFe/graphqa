@@ -210,8 +210,8 @@ del params
 # endregion
 
 # Datasets and dataloaders
-dataset_train = ProteinFile(Path(ex.session.data.folder) / 'training_casp9_10.v4.h5')
-dataset_val = ProteinFile(Path(ex.session.data.folder) / 'validation_casp11.v4.h5')
+dataset_train = ProteinFile(Path(ex.session.data.folder) / 'training_casp9_10.v4.h5', cutoff=ex.session.data.cutoff)
+dataset_val = ProteinFile(Path(ex.session.data.folder) / 'validation_casp11.v4.h5', cutoff=ex.session.data.cutoff)
 
 dataloader_kwargs = dict(
     num_workers=ex.session.cpus,
@@ -431,8 +431,8 @@ ex.metrics.local.pearson_R_per_model = nodes_df.groupby(['ProteinName', 'ModelNa
 pyaml.pprint(ex.metrics, sort_dicts=False, width=200)
 
 if 'cuda' in ex.session.device:
-    ex.session.cuda.memory_used_max = f'{torch.cuda.max_memory_allocated(ex.session.device) // (10**6)} MiB'
-    print('Max GPU memory used:', ex.session.cuda.memory_used_max)
+    ex.session.cuda.gpus[0].memory_used_max = f'{torch.cuda.max_memory_allocated(ex.session.device) // (10**6)} MiB'
+    print('Max GPU memory used:', ex.session.cuda.gpus[0].memory_used_max)
 
 if logger is not None:
     for sub in ['local', 'globals']:
