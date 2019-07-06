@@ -75,26 +75,29 @@ class ProteinModels(torch.utils.data.Dataset):
         # The distances are returned in a condensed upper triangular form without the diagonal
         distances = scipy.spatial.distance.pdist(coords)
         senders, receivers = np.triu_indices(len(coords), k=1)
-        idx_diagonal = receivers - senders == 1  # indexes of adjacent residues
+        idx_adjacent = receivers - senders == 1  # indexes of adjacent residues
 
         # Chemically bonded adjacent residues = 1, non connected but close enough residues = 0
         edge_type = np.zeros_like(distances)
-        edge_type[idx_diagonal] = 1
+        edge_type[idx_adjacent] = 1
 
         # The distance between adjacent residues might be missing because the residues don't have 3D coordinates
         # in this particular model, we set it to the a random distance with mean and variance equal to
         # the mean and variance of the distance between adjacent residues in the whole dataset
-        to_fill = np.logical_and(idx_diagonal, np.isnan(distances))
+        to_fill = np.logical_and(idx_adjacent, np.isnan(distances))
         distances[to_fill] = np.random.normal(5.349724573740155, 0.9130922391969375, np.count_nonzero(to_fill))
 
         # Distances greater that cutoff (in Angstrom) are considered irrelevant
         with np.errstate(invalid='ignore'):
             is_relevant = distances < self.cutoff
 
-        senders = senders[is_relevant]
-        receivers = receivers[is_relevant]
-        distances = distances[is_relevant]
-        edge_type = edge_type[is_relevant]
+        to_keep = np.logical_or(is_relevant, idx_adjacent)
+        senders = senders[to_keep]
+        receivers = receivers[to_keep]
+        distances = distances[to_keep]
+        edge_type = edge_type[to_keep]
+
+        distances = np.exp(-distances ** 2 / (2 * self.cutoff))
 
         return senders, receivers, np.vstack((distances, edge_type)).transpose()
 
