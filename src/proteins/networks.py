@@ -43,7 +43,9 @@ class ProteinGN(nn.Module):
 
         # Edge, node and global shapes linearly decrease from (16, 32, 8)
         # to the sizes given as parameters (e.g. 2, 4, 1)
-        # in the number of steps given as parameter (e.g. 10)
+        # in the number of steps given as parameter (e.g. 10).
+        # Every edge/node/global processing layer uses a 2-layer MLP,
+        # the first layer aggregates features from the neighborhood, the second doesn't.
         hidden_size_edges = torch.linspace(16, size_edges, layers+1).int().tolist()
         hidden_size_nodes = torch.linspace(32, size_nodes, layers+1).int().tolist()
         hidden_size_globals= torch.linspace(8, size_globals, layers+1).int().tolist()
@@ -53,34 +55,52 @@ class ProteinGN(nn.Module):
             hidden_size_edges[1:], hidden_size_nodes[1:], hidden_size_globals[1:]
         ):
             layer = nn.Sequential(OrderedDict({
-                'edge': tg.EdgeLinear(
+                'edge1': tg.EdgeLinear(
                     out_features=out_e,
                     edge_features=in_e,
                     sender_features=in_n,
                     global_features=in_g
                 ),
-                'edge_relu': tg.EdgeReLU(),
-                'edge_dropout': tg.EdgeDropout(p=dropout),
+                'edge1_relu': tg.EdgeReLU(),
+                'edge1_dropout': tg.EdgeDropout(p=dropout),
+                'edge2': tg.EdgeLinear(
+                    out_features=out_e,
+                    edge_features=out_e,
+                ),
+                'edge2_relu': tg.EdgeReLU(),
+                'edge2_dropout': tg.EdgeDropout(p=dropout),
 
-                'node': tg.NodeLinear(
+                'node1': tg.NodeLinear(
                     out_features=out_n,
                     node_features=in_n,
                     incoming_features=out_e,
                     global_features=in_g,
                     aggregation='mean',
                 ),
-                'node_relu': tg.NodeReLU(),
-                'node_dropout': tg.NodeDropout(p=dropout),
+                'node1_relu': tg.NodeReLU(),
+                'node1_dropout': tg.NodeDropout(p=dropout),
+                'node2': tg.NodeLinear(
+                    out_features=out_n,
+                    node_features=out_n,
+                ),
+                'node2_relu': tg.NodeReLU(),
+                'node2_dropout': tg.NodeDropout(p=dropout),
 
-                'global': tg.GlobalLinear(
+                'global1': tg.GlobalLinear(
                     out_features=out_g,
                     edge_features=out_e,
                     node_features=out_n,
                     global_features=in_g,
                     aggregation='mean',
                 ),
-                'global_relu': tg.GlobalReLU(),
-                'global_dropout': tg.GlobalDropout(p=dropout),
+                'global1_relu': tg.GlobalReLU(),
+                'global1_dropout': tg.GlobalDropout(p=dropout),
+                'global2': tg.GlobalLinear(
+                    out_features=out_g,
+                    global_features=out_g,
+                ),
+                'global2_relu': tg.GlobalReLU(),
+                'global2_dropout': tg.GlobalDropout(p=dropout),
             }))
             self.layers.append(layer)
 
