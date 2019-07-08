@@ -432,7 +432,10 @@ pyaml.pprint(ex.metrics, sort_dicts=False, width=200)
 
 if 'cuda' in ex.session.device:
     ex.session.cuda.gpus[0].memory_used_max = f'{torch.cuda.max_memory_allocated(ex.session.device) // (10**6)} MiB'
-    print('Max GPU memory used:', ex.session.cuda.gpus[0].memory_used_max)
+    ex.session.cuda.gpus[0].memory_cached_max = f'{torch.cuda.max_memory_cached(ex.session.device) // (10**6)} MiB'
+    print(f'Max GPU memory:'
+          f'\n- used   {ex.session.cuda.gpus[0].memory_used_max}'
+          f'\n- cached {ex.session.cuda.gpus[0].memory_cached_max}')
 
 if logger is not None:
     for sub in ['local', 'globals']:
