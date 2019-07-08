@@ -25,7 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from .saver import Saver
 from .utils import git_info, cuda_info, parse_dotted, update_rec, set_seeds, import_, sort_dict, RunningStats
-from .dataset import ProteinFile
+from .dataset import ProteinFolder
 
 parser = ArgumentParser()
 parser.add_argument('--experiment', nargs='+', required=True)
@@ -210,8 +210,8 @@ del params
 # endregion
 
 # Datasets and dataloaders
-dataset_train = ProteinFile(Path(ex.session.data.folder) / 'training_casp9_10.v4.h5', cutoff=ex.session.data.cutoff)
-dataset_val = ProteinFile(Path(ex.session.data.folder) / 'validation_casp11.v4.h5', cutoff=ex.session.data.cutoff)
+dataset_train = ProteinFolder(Path(ex.session.data.folder) / 'training', cutoff=ex.session.data.cutoff)
+dataset_val = ProteinFolder(Path(ex.session.data.folder) / 'validation', cutoff=ex.session.data.cutoff)
 
 dataloader_kwargs = dict(
     num_workers=ex.session.cpus,
