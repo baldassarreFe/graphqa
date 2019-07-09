@@ -1,8 +1,11 @@
 model:
   fn: proteins.networks.ProteinGN
   kwargs:
-    layers: 8
-    size_edges: 2
-    size_nodes: 4
-    size_globals: 1
+    layers: 4
+    hidden_size_in_edges: 16
+    hidden_size_in_nodes: 32
+    hidden_size_in_globals: 8
+    hidden_size_out_edges: 64
+    hidden_size_out_nodes: 128
+    hidden_size_out_globals: 32
     dropout: .5
