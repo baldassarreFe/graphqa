@@ -10,6 +10,12 @@ MAX_DISTANCE = 12
 
 class ProteinFolder(torch.utils.data.Dataset):
     def __init__(self, folder, cutoff):
+        """
+        Load `.pt` files from a folder
+        :param folder: the dataset folder
+        :param cutoff: the maximum distance at which non-adjacent residues should be connected,
+                       passing 0 will result in simple linear graph structure
+        """
         folder = Path(folder).expanduser().resolve()
         if not folder.is_dir():
             raise ValueError(f'Not a directory: {folder}')
