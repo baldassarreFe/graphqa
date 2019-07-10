@@ -98,8 +98,7 @@ class ProteinGN(nn.Module):
         self.readout = nn.Sequential(OrderedDict({
             'node': tg.NodeLinear(1, node_features=hidden_size_out_nodes),
             'node_sigmoid': tg.NodeSigmoid(),
-            # 'global': tg.GlobalLinear(1, global_features=hidden_size_out_globals, node_features=1, aggregation='mean')
-            'global': tg.GlobalLinear(1, global_features=hidden_size_out_globals),
+            'global': tg.GlobalLinear(1, global_features=hidden_size_out_globals, node_features=1, aggregation='mean'),
             'global_sigmoid': tg.GlobalSigmoid()
         }))
 
