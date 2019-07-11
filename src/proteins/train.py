@@ -449,6 +449,7 @@ if logger is not None:
     ax.set_title(f'Local Scores (R: {ex.metrics.local.pearson_R:.3f} R2: {ex.metrics.local.R2:.3f})')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
+    ax.plot([0, 1], [0, 1], color='red', linestyle='--')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
@@ -457,6 +458,7 @@ if logger is not None:
     ax.set_title(f'Global Scores (R: {ex.metrics.globals.pearson_R:.3f} R2: {ex.metrics.globals.R2:.3f})')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
+    ax.plot([0, 1], [0, 1], color='red', linestyle='--')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
