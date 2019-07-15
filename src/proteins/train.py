@@ -236,7 +236,7 @@ dataloader_val = torch.utils.data.DataLoader(
 #     .apply(np.negative) \
 #     .astype(np.float32) \
 #     .sort_index()
-del dataloader_kwargs
+del dataloader_kwargs, dataset_train, dataset_val
 
 
 # region Training
@@ -262,7 +262,7 @@ for epoch_idx in epoch_bar:
     loss_total_avg = RunningStats()
 
     train_bar = tqdm.tqdm(desc=f'Train {ex.epoch}', total=len(dataloader_train.dataset), unit='g')
-    for batch_idx, (_, _, graphs, targets )in enumerate(dataloader_train):
+    for batch_idx, (_, _, graphs, targets)in enumerate(dataloader_train):
         graphs = graphs.to(ex.session.device)
         targets = targets.to(ex.session.device)
         results = model(graphs)
@@ -270,9 +270,11 @@ for epoch_idx in epoch_bar:
         loss_total = torch.tensor(0., device=ex.session.device)
 
         if ex.session.losses.nodes > 0:
-            node_mask = ~torch.isnan(targets.node_features.squeeze())
-            loss_nodes = F.mse_loss(results.node_features.squeeze()[node_mask],
-                                    targets.node_features.squeeze()[node_mask], reduction='mean')
+            node_mask = torch.isfinite(targets.node_features[:, 0])
+            loss_nodes = (
+                targets.node_features[node_mask, 1] *
+                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
+            ).mean()
             loss_total += ex.session.losses.nodes * loss_nodes
             loss_nodes_avg.add(loss_nodes.item(), len(graphs))
             train_bar_postfix['Nodes'] = f'{loss_nodes.item():.5f}'
@@ -335,9 +337,11 @@ for epoch_idx in epoch_bar:
         loss_total = torch.tensor(0., device=ex.session.device)
 
         if ex.session.losses.nodes > 0:
-            node_mask = ~torch.isnan(targets.node_features.squeeze())
-            loss_nodes = F.mse_loss(results.node_features.squeeze()[node_mask],
-                                    targets.node_features.squeeze()[node_mask], reduction='mean')
+            node_mask = torch.isfinite(targets.node_features[:, 0])
+            loss_nodes = (
+                targets.node_features[node_mask, 1] *
+                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
+            ).mean()
             loss_total += ex.session.losses.nodes * loss_nodes
             loss_nodes_avg.add(loss_nodes.item(), len(graphs))
             val_bar_postfix['Nodes'] = f'{loss_nodes.item():.5f}'
@@ -362,7 +366,7 @@ for epoch_idx in epoch_bar:
             nodes_df['ProteinName'].append(np.repeat(np.array(protein_name), graphs.num_nodes_by_graph.cpu()))
             nodes_df['ModelName'].append(np.repeat(np.array(model_name), graphs.num_nodes_by_graph.cpu()))
             nodes_df['NodeId'].append(np.concatenate([np.arange(n) for n in graphs.num_nodes_by_graph.cpu()]))
-            nodes_df['LocalScoreTrue'].append(targets.node_features.squeeze().cpu())
+            nodes_df['LocalScoreTrue'].append(targets.node_features[:, 0].cpu())
             nodes_df['LocalScorePredicted'].append(results.node_features.squeeze().cpu())
         # endregion
 

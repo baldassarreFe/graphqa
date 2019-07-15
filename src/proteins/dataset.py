@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch.utils.data
 
 import torchgraphs as tg
@@ -9,7 +10,7 @@ MAX_DISTANCE = 12
 
 
 class ProteinFolder(torch.utils.data.Dataset):
-    def __init__(self, folder, cutoff):
+    def __init__(self, folder, cutoff, use_local_weights=True):
         """
         Load `.pt` files from a folder
         :param folder: the dataset folder
@@ -25,6 +26,10 @@ class ProteinFolder(torch.utils.data.Dataset):
 
         self.cutoff = cutoff
         self.samples = sorted(f for f in folder.glob('sample*.pt'))
+        self.use_local_weights = use_local_weights
+        if self.use_local_weights:
+            frequencies_local = pd.read_pickle(folder / 'frequencies_local.pkl')
+            self.local_weights = frequencies_local.max() / frequencies_local
 
     def __len__(self):
         return len(self.samples)
@@ -32,6 +37,7 @@ class ProteinFolder(torch.utils.data.Dataset):
     def __getitem__(self, item):
         protein_name, provider, graph_in, graph_target = torch.load(self.samples[item])
 
+        # Remove edges between non-adjacent residues with distance greater than cutoff
         distances, edge_type = graph_in.edge_features.unbind(dim=1)
         to_keep = (edge_type == 1.) | (distances < self.cutoff)
         edge_features = graph_in.edge_features[to_keep]
@@ -44,14 +50,32 @@ class ProteinFolder(torch.utils.data.Dataset):
             edge_features=edge_features,
         )
 
+        # Compute weights for the local scores proportionally to the inverse of the frequency of
+        # that score in the dataset (we use tensor repeat here to have NaN weight for NaN scores)
+        # The first column of node_features is the score, the second column is the weight.
+        node_features = graph_target.node_features.repeat(1, 2)
+        scores = node_features[:, 0]
+        valid_scores = torch.isfinite(scores)
+        if self.use_local_weights:
+            valid_weights = self.local_weights.loc[scores[valid_scores]]
+            node_features[valid_scores, 1] = node_features.new_tensor(valid_weights.values)
+        else:
+            node_features[valid_scores, 1] = 1.
+
+        graph_target = graph_target.evolve(node_features=node_features)
+
         return protein_name, provider, graph_in, graph_target
 
 
 def process_file(filepath, destpath):
     import tables
+    import pandas as pd
 
     destpath = Path(destpath).expanduser().resolve()
     destpath.mkdir(parents=True, exist_ok=True)
+
+    all_local_scores = []
+    all_global_scores = []
 
     with tables.open_file(filepath) as h5_file:
         proteins = (
@@ -59,10 +83,26 @@ def process_file(filepath, destpath):
             if not (p._v_pathname.startswith('/casp') or p._v_pathname.startswith('/cameo'))
         )
         for i, protein in enumerate(proteins):
+            all_global_scores += np.array(protein.lddt_global).tolist()
+            all_local_scores += np.array(protein.lddt).ravel().tolist()
+
             num_models = len(protein.names)
             for j in range(num_models):
                 sample = process_protein(protein, j)
                 torch.save(sample, destpath / f'sample_{i}_{j}.pt')
+
+    all_local_scores = pd.Series(all_local_scores, name='local_scores').dropna()
+    all_global_scores = pd.Series(all_global_scores, name='global_scores').dropna()
+
+    frequencies_local = pd.cut(all_local_scores, bins=np.linspace(0, 1, num=20 + 1), include_lowest=True) \
+        .value_counts() \
+        .sort_index()
+    frequencies_global = pd.cut(all_global_scores, bins=np.linspace(0, 1, num=20 + 1), include_lowest=True) \
+        .value_counts() \
+        .sort_index()
+
+    frequencies_local.to_pickle(destpath / 'frequencies_local.pkl')
+    frequencies_global.to_pickle(destpath / 'frequencies_global.pkl')
 
 
 def process_protein(protein, model_idx):
