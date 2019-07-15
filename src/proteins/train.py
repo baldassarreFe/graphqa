@@ -280,7 +280,7 @@ for epoch_idx in epoch_bar:
         if ex.session.losses.nodes > 0:
             node_mask = torch.isfinite(targets.node_features[:, 0])
             loss_nodes = (
-                targets.node_features[node_mask, 1] *
+                targets.node_features[node_mask, 2] *
                 F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
             ).mean()
             loss_total += ex.session.losses.nodes * loss_nodes
@@ -347,7 +347,7 @@ for epoch_idx in epoch_bar:
         if ex.session.losses.nodes > 0:
             node_mask = torch.isfinite(targets.node_features[:, 0])
             loss_nodes = (
-                targets.node_features[node_mask, 1] *
+                targets.node_features[node_mask, 2] *
                 F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
             ).mean()
             loss_total += ex.session.losses.nodes * loss_nodes
@@ -366,9 +366,22 @@ for epoch_idx in epoch_bar:
 
         # region Last epoch
         if epoch_idx == ex.session.epochs:
+            import torch_scatter
+            # Drop residues not present in the native structure
+            present_in_native = targets.node_features[:, 1] == 1.
+            global_indices = graphs.node_index_by_graph[present_in_native]
+
+            # Set to 0 the score of the residues not present in the model
+            local_scores = results.node_features[present_in_native, 0]
+            missing_in_model = graphs.node_features[present_in_native, 82] == 0.
+            local_scores[missing_in_model] = 0.
+
+            global_scores = torch_scatter.scatter_mean(local_scores, index=global_indices, dim=0, dim_size=graphs.num_graphs)
+
             graphs_df['ProteinName'].append(np.array(protein_name))
             graphs_df['ModelName'].append(np.array(model_name))
             graphs_df['GlobalScoreTrue'].append(targets.global_features.squeeze().cpu())
+            graphs_df['GlobalScoreComputed'].append(global_scores.cpu())
             graphs_df['GlobalScorePredicted'].append(results.global_features.squeeze().cpu())
 
             nodes_df['ProteinName'].append(np.repeat(np.array(protein_name), graphs.num_nodes_by_graph.cpu()))
@@ -418,7 +431,7 @@ del epoch_bar, epoch_bar_postfix, epoch_idx
 
 # region Final report
 graphs_df = pd.DataFrame({k: np.concatenate(v) for k, v in graphs_df.items()})
-ex.metrics = {'globals': {}, 'local': {}}
+ex.metrics = {'local': {}, 'globals': {}, 'globals_computed': {}}
 ex.metrics.globals.rmse = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted']))
 ex.metrics.globals.R2 = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])
 ex.metrics.globals.R2_per_target = graphs_df.groupby('ProteinName') \
@@ -427,6 +440,16 @@ ex.metrics.globals.R2_per_target = graphs_df.groupby('ProteinName') \
 ex.metrics.globals.pearson_R = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])[0]
 ex.metrics.globals.pearson_R_per_target = graphs_df.groupby('ProteinName') \
     .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScorePredicted'])[0]) \
+    .mean()
+
+ex.metrics.globals_computed.rmse = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScoreComputed']))
+ex.metrics.globals_computed.R2 = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScoreComputed'])
+ex.metrics.globals_computed.R2_per_target = graphs_df.groupby('ProteinName') \
+    .apply(lambda df: r2_score(df['GlobalScoreTrue'], df['GlobalScoreComputed'])) \
+    .mean()
+ex.metrics.globals_computed.pearson_R = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScoreComputed'])[0]
+ex.metrics.globals_computed.pearson_R_per_target = graphs_df.groupby('ProteinName') \
+    .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScoreComputed'])[0]) \
     .mean()
 
 nodes_df = pd.DataFrame({k: np.concatenate(v) for k, v in nodes_df.items()}).dropna(subset=['LocalScoreTrue'])

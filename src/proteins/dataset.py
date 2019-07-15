@@ -51,18 +51,23 @@ class ProteinFolder(torch.utils.data.Dataset):
         )
 
         # Compute weights for the local scores proportionally to the inverse of the frequency of
-        # that score in the dataset (we use tensor repeat here to have NaN weight for NaN scores)
+        # that score in the dataset (we use tensor clone here to have NaN weight for NaN scores)
         # The first column of node_features is the score, the second column is the weight.
-        node_features = graph_target.node_features.repeat(1, 2)
-        scores = node_features[:, 0]
+        scores = graph_target.node_features[:, 0]
+        weights = scores.clone()
         valid_scores = torch.isfinite(scores)
         if self.use_local_weights:
             valid_weights = self.local_weights.loc[scores[valid_scores]]
-            node_features[valid_scores, 1] = node_features.new_tensor(valid_weights.values)
+            weights[valid_scores] = weights.new_tensor(valid_weights.values)
         else:
-            node_features[valid_scores, 1] = 1.
+            weights[valid_scores] = 1.
 
-        graph_target = graph_target.evolve(node_features=node_features)
+        graph_target = graph_target.evolve(
+            node_features=torch.cat([
+                graph_target.node_features,
+                weights[:, None]
+            ], dim=1)
+        )
 
         return protein_name, provider, graph_in, graph_target
 
@@ -122,6 +127,7 @@ def process_protein(protein, model_idx):
     provider = protein.names[model_idx].decode('utf-8')    # Who built this model of the protein
     coordinates = protein.cb_coordinates[model_idx]        # Coordinates of the β carbon (α if β is not present)
     structure_determined = protein.valid_dssp[model_idx]   # Which residues are determined within this model
+    native_determined = protein.valid_dssp[0]              # Which residues are determined in the native structure
     dssp_features = protein.dssp[model_idx]                # DSSP features for the secondary structure
 
     # For every residue a score is determined by comparison with the native structure.
@@ -152,7 +158,10 @@ def process_protein(protein, model_idx):
     )
     graph_target = tg.Graph(
         num_nodes=sequence_length,
-        node_features=torch.from_numpy(scores).view(-1, 1).float(),
+        node_features=torch.from_numpy(np.stack([
+           scores,
+           native_determined
+        ], axis=1)).float(),
         global_features=torch.tensor([global_score]).float()
     )
 
