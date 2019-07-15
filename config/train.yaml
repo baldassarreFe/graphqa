@@ -15,6 +15,7 @@ session:
   data:
     folder: ~/experiments/{name}/data
     cutoff: 8
+    use_local_weights: True
   log:
     folder: ~/experiments/{name}/runs/{tags}_{rand}
     when:

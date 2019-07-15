@@ -10,7 +10,7 @@ MAX_DISTANCE = 12
 
 
 class ProteinFolder(torch.utils.data.Dataset):
-    def __init__(self, folder, cutoff, use_local_weights=True):
+    def __init__(self, folder, cutoff, use_local_weights):
         """
         Load `.pt` files from a folder
         :param folder: the dataset folder

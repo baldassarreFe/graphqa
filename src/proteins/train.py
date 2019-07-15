@@ -210,8 +210,16 @@ del params
 # endregion
 
 # Datasets and dataloaders
-dataset_train = ProteinFolder(Path(ex.session.data.folder) / 'training', cutoff=ex.session.data.cutoff)
-dataset_val = ProteinFolder(Path(ex.session.data.folder) / 'validation', cutoff=ex.session.data.cutoff)
+dataset_train = ProteinFolder(
+    Path(ex.session.data.folder) / 'training',
+    cutoff=ex.session.data.cutoff,
+    use_local_weights=ex.session.data.use_local_weights
+)
+dataset_val = ProteinFolder(
+    Path(ex.session.data.folder) / 'validation',
+    cutoff=ex.session.data.cutoff,
+    use_local_weights=ex.session.data.use_local_weights
+)
 
 dataloader_kwargs = dict(
     num_workers=ex.session.cpus,
