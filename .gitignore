@@ -2,6 +2,7 @@
 examples/
 notebooks/
 data/
+runs/
 
 # IntelliJ
 .idea/
