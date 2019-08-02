@@ -52,19 +52,19 @@ def cuda_info():
         return None
 
     driver = ''
-    gpus = []
+    devices = {}
     for child in ElementTree.fromstring(nvidia_smi_xml):
         if child.tag == 'driver_version':
             driver = child.text
         elif child.tag == 'gpu':
-            gpus.append({
+            devices[f'cuda:{child.find("minor_number").text}'] = {
                 'model': child.find('product_name').text,
                 'utilization': child.find('utilization').find('gpu_util').text,
                 'memory_used': child.find('fb_memory_usage').find('used').text,
                 'memory_total': child.find('fb_memory_usage').find('total').text,
-            })
+            }
 
-    return {'driver': driver, 'gpus': gpus}
+    return {'driver': driver, 'devices': devices}
 
 
 def parse_dotted(string):

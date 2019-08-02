@@ -1,27 +1,18 @@
 name: proteins
 
+data:
+  cutoff: 8
+
 optimizer:
   fn: torch.optim.Adam
-  kwargs:
-    lr: .001
-    weight_decay: 0
+  lr: .001
+  weight_decay: 0
 
-session:
-  epochs: 15
-  batch_size: 500
-  losses:
-    nodes: 1
-    globals: 1
-  data:
-    folder: ~/experiments/{name}/data
-    cutoff: 8
+losses:
+  nodes:
+    name: mse
+    weight: 1
     use_local_weights: True
-  log:
-    folder: ~/experiments/{name}/runs/{tags}_{rand}
-    when:
-      - every batch
-  checkpoint:
-    folder: ~/experiments/{name}/runs/{tags}_{rand}
-    when:
-      #- every epoch
-      - last epoch
+  globals:
+    name: mse
+    weight: 1

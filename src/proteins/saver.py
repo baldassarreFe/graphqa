@@ -10,12 +10,13 @@ class Saver(object):
     def __init__(self, folder: Union[str, Path]):
         self.base_folder = Path(folder).expanduser().resolve()
         self.checkpoint_folder = self.base_folder / 'checkpoints'
+
+    def save_model(self, model, epoch, samples, is_best=False):
         self.checkpoint_folder.mkdir(parents=True, exist_ok=True)
 
-    def save_model(self, model, suffix=None, is_best=False):
         if isinstance(model, torch.nn.DataParallel):
             model = model.module
-        name = 'model.pt' if suffix is None else f'model.{suffix}.pt'
+        name = f'model.e{epoch}.s{samples}.pt'
         model_path = self.checkpoint_folder / name
         torch.save(model.state_dict(), model_path)
 
@@ -32,8 +33,10 @@ class Saver(object):
 
         return model_path.as_posix()
 
-    def save_optimizer(self, optimizer, suffix=None):
-        name = 'optimizer.pt' if suffix is None else f'optimizer.{suffix}.pt'
+    def save_optimizer(self, optimizer, epoch, samples):
+        self.checkpoint_folder.mkdir(parents=True, exist_ok=True)
+
+        name = f'optimizer.e{epoch}.s{samples}.pt'
         optimizer_path = self.checkpoint_folder / name
         torch.save(optimizer.state_dict(), optimizer_path)
 
@@ -44,11 +47,13 @@ class Saver(object):
 
         return optimizer_path.as_posix()
 
-    def save_experiment(self, experiment, suffix=None):
-        name = 'experiment.yaml' if suffix is None else f'experiment.{suffix}.yaml'
+    def save_experiment(self, experiment, epoch, samples):
+        self.checkpoint_folder.mkdir(parents=True, exist_ok=True)
+
+        name = f'experiment.e{epoch}.s{samples}.yaml'
         experiment_path = self.checkpoint_folder / name
         with open(experiment_path, 'w') as f:
-            pyaml.dump(experiment, f, safe=True, sort_dicts=False)
+            pyaml.dump(experiment, f, safe=True, sort_dicts=False, force_embed=True)
 
         latest_path = self.base_folder / 'experiment.latest.yaml'
         if latest_path.exists():
@@ -57,11 +62,9 @@ class Saver(object):
 
         return experiment_path.as_posix()
 
-    def save(self, model, experiment, optimizer, suffix=None, is_best=False):
-        experiment.model.state_dict = self.save_model(model, suffix=suffix, is_best=is_best)
-        experiment.optimizer.state_dict = self.save_optimizer(optimizer, suffix=suffix)
+    def save(self, model, experiment, optimizer, epoch, samples, is_best=False):
         return {
-            'model': experiment.model.state_dict,
-            'optimizer': experiment.optimizer.state_dict,
-            'experiment': self.save_experiment(experiment, suffix=suffix)
+            'model': self.save_model(model, epoch, samples, is_best),
+            'optimizer': self.save_optimizer(optimizer, epoch, samples),
+            'experiment': self.save_experiment(experiment, epoch, samples)
         }

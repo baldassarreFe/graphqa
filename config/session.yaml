@@ -1,0 +1,7 @@
+max_epochs: 15
+batch_size: 500
+log:
+  - every batch
+checkpoint:
+  #- every epoch
+  - last epoch

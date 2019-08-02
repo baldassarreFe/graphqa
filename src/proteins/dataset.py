@@ -10,7 +10,7 @@ MAX_DISTANCE = 12
 
 
 class ProteinFolder(torch.utils.data.Dataset):
-    def __init__(self, folder, cutoff, use_local_weights):
+    def __init__(self, folder, cutoff):
         """
         Load `.pt` files from a folder
         :param folder: the dataset folder
@@ -26,10 +26,9 @@ class ProteinFolder(torch.utils.data.Dataset):
 
         self.cutoff = cutoff
         self.samples = sorted(f for f in folder.glob('sample*.pt'))
-        self.use_local_weights = use_local_weights
-        if self.use_local_weights:
-            frequencies_local = pd.read_pickle(folder / 'frequencies_local.pkl')
-            self.local_weights = frequencies_local.max() / frequencies_local
+
+        frequencies_local = pd.read_pickle(folder / 'frequencies_local.pkl')
+        self.local_weights = frequencies_local.max() / frequencies_local
 
     def __len__(self):
         return len(self.samples)
@@ -51,16 +50,13 @@ class ProteinFolder(torch.utils.data.Dataset):
         )
 
         # Compute weights for the local scores proportionally to the inverse of the frequency of
-        # that score in the dataset (we use tensor clone here to have NaN weight for NaN scores)
-        # The first column of node_features is the score, the second column is the weight.
+        # that score in the dataset (NaN scores have NaN weight)
+        # The first column of node_features is the score, the last column is the weight.
         scores = graph_target.node_features[:, 0]
-        weights = scores.clone()
-        valid_scores = torch.isfinite(scores)
-        if self.use_local_weights:
-            valid_weights = self.local_weights.loc[scores[valid_scores]]
-            weights[valid_scores] = weights.new_tensor(valid_weights.values)
-        else:
-            weights[valid_scores] = 1.
+        valid_scores_idx = torch.isfinite(scores)
+        valid_weights = self.local_weights.loc[scores[valid_scores_idx]]
+        weights = torch.full_like(scores, float('nan'))
+        weights[valid_scores_idx] = weights.new_tensor(valid_weights.values)
 
         graph_target = graph_target.evolve(
             node_features=torch.cat([
