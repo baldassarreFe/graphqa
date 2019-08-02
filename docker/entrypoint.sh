@@ -21,6 +21,6 @@ else
 fi
 
 # Fix permissions for artifacts created as root
-chown --from=$(id -u):$(id -g) --recursive --changes ${EXTERNAL_USER}:${EXTERNAL_USER} /root/experiments/proteins/runs
+chown --from=$(id -u):$(id -g) --recursive --changes ${EXTERNAL_USER}:${EXTERNAL_USER} /root/proteins/runs
 
 exit "$OUT_CODE"
