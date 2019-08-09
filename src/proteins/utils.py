@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import yaml
 import itertools
 import subprocess
@@ -65,6 +67,11 @@ def cuda_info():
             }
 
     return {'driver': driver, 'devices': devices}
+
+
+def round_timedelta(delta: timedelta):
+    """Round a timedelta instance to the second."""
+    return timedelta(seconds=round(delta.total_seconds()))
 
 
 def parse_dotted(string):

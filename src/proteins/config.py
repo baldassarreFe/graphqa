@@ -21,7 +21,8 @@ def flatten_dict(input: Mapping, prefix: Sequence = ()) -> Generator[Tuple[Tuple
             yield (*prefix, k), v
 
 
-def build_dict(tuples: Tuple[Tuple[str, ...], Any], target: Optional[MutableMapping] = None) -> MutableMapping:
+def build_dict(tuples: Iterable[Tuple[Tuple[str, ...], Any]],
+               target: Optional[MutableMapping] = None) -> MutableMapping:
     if target is None:
         target = {}
     for k, v in tuples:

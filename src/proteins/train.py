@@ -1,22 +1,17 @@
 import os
-import tqdm
 import pyaml
 import random
 import inspect
 import textwrap
-import namesgenerator
 import multiprocessing
 
 from typing import Mapping
 from pathlib import Path
 from datetime import datetime
+from operator import itemgetter
 
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.metrics import r2_score, mean_squared_error
-from scipy.stats import pearsonr
-from munch import DefaultFactoryMunch
+import namesgenerator
 
 import torch
 import torch.utils.data
@@ -24,10 +19,16 @@ import torch.nn.functional as F
 import torchgraphs as tg
 from torch.utils.tensorboard import SummaryWriter
 
+from ignite.engine import Engine, Events
+from ignite.contrib.handlers import ProgressBar
+
+from .config import build_dict
+from .utils import round_timedelta
 from .config import parse_args
 from .saver import Saver
-from .utils import git_info, cuda_info, set_seeds, import_, sort_dict, RunningStats
+from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
 from .dataset import ProteinFolder
+from .metrics import ProteinMetrics, ProteinAverageLosses
 
 # region Arguments parsing
 ex = parse_args(config={
@@ -53,7 +54,7 @@ ex = parse_args(config={
         'cpus': multiprocessing.cpu_count() - 1,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         'log': [],
-        'checkpoint': [],
+        'checkpoint': -1,
     }
 })
 session: dict = ex.pop('session')
@@ -109,6 +110,7 @@ session['datetime_completed'] = None
 session['git'] = git_info()
 session['cuda'] = cuda_info() if 'cuda' in session['device'] else None
 session['metrics'] = {}
+session['checkpoint'] = session['checkpoint']
 
 if session['cpus'] < 0:
     raise ValueError(f'Invalid number of cpus: {session["cpus"]}')
@@ -195,7 +197,6 @@ print('Parameters:', sum(p.numel() for p in model.parameters() if p.requires_gra
 if ex['samples'] == 0:
     logger.add_scalar(
         'misc/parameters', sum(p.numel() for p in model.parameters() if p.requires_grad), global_step=ex['samples'])
-# endregion
 
 
 # Datasets and dataloaders
@@ -204,6 +205,11 @@ def get_dataloaders(ex, session):
 
     dataset_train = ProteinFolder(data_folder / 'training', cutoff=ex['data']['cutoff'])
     dataset_val = ProteinFolder(data_folder / 'validation', cutoff=ex['data']['cutoff'])
+
+    if 'QUICK_RUN' in os.environ:
+        print('QUICK RUN: limiting the datasets to 5 batches')
+        dataset_train = torch.utils.data.Subset(dataset_train, range(5 * session['batch_size']))
+        dataset_val = torch.utils.data.Subset(dataset_val, range(5 * session['batch_size']))
 
     dataloader_kwargs = dict(
         num_workers=session['cpus'],
@@ -220,277 +226,224 @@ def get_dataloaders(ex, session):
 
 
 dataloader_train, dataloader_val = get_dataloaders(ex, session)
+# endregion
+
 
 # region Training
-# Train and validation loops
-session['status'] = 'RUNNING'
-session['datetime_started'] = datetime.utcnow()
+def training_function(trainer, batch):
+    protein_names, model_names, graphs, targets = batch
+    graphs = graphs.to(session['device'])
+    targets = targets.to(session['device'])
+    results = model(graphs)
 
-graphs_df = DefaultFactoryMunch(list)
-nodes_df = DefaultFactoryMunch(list)
+    if ex['losses']['nodes']['weight'] > 0:
+        node_mask = torch.isfinite(targets.node_features[:, 0])
+        loss_nodes = (
+                targets.node_features[node_mask, 2] *
+                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
+        ).mean()
+    else:
+        loss_nodes = 0
 
-epoch_bar_postfix = {}
-epoch_bar = tqdm.trange(1, session['max_epochs'] + 1, desc='Epochs', unit='e', leave=True)
-for epoch_idx in epoch_bar:
-    # region Training loop
+    if ex['losses']['globals']['weight'] > 0:
+        loss_global = F.mse_loss(
+            results.global_features.squeeze(), targets.global_features.squeeze(), reduction='mean')
+    else:
+        loss_global = 0
+
+    loss_total = (
+        ex['losses']['nodes']['weight'] * loss_nodes +
+        ex['losses']['globals']['weight'] * loss_global
+    )
+
+    optimizer.zero_grad()
+    loss_total.backward()
+    optimizer.step(closure=None)
+
+    return {
+        'num_samples': len(graphs),
+        'protein_names': protein_names,
+        'model_names': model_names,
+        'targets': targets,
+        'results': results,
+        'loss': {
+            'total': loss_total.item(),
+            'local': loss_nodes.item(),
+            'global': loss_global.item(),
+        },
+    }
+
+
+def validation_function(validator, batch):
+    protein_names, model_names, graphs, targets = batch
+    graphs = graphs.to(session['device'])
+    targets = targets.to(session['device'])
+    results = model(graphs)
+
+    if ex['losses']['nodes']['weight'] > 0:
+        node_mask = torch.isfinite(targets.node_features[:, 0])
+        loss_nodes = (
+                targets.node_features[node_mask, 2] *
+                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
+        ).mean()
+    else:
+        loss_nodes = 0
+
+    if ex['losses']['globals']['weight'] > 0:
+        loss_global = F.mse_loss(
+            results.global_features.squeeze(), targets.global_features.squeeze(), reduction='mean')
+    else:
+        loss_global = 0
+
+    loss_total = (
+            ex['losses']['nodes']['weight'] * loss_nodes +
+            ex['losses']['globals']['weight'] * loss_global
+    )
+
+    return {
+        'num_samples': len(graphs),
+        'protein_names': protein_names, 
+        'model_names': model_names,
+        'targets': targets,
+        'results': results,
+        'loss': {
+            'total': loss_total.item(),
+            'local': loss_nodes.item(),
+            'global': loss_global.item(),
+        },
+    }
+
+
+trainer = Engine(training_function)
+validator = Engine(validation_function)
+
+
+@trainer.on(Events.STARTED, session)
+def session_start(trainer, session):
+    session['status'] = 'RUNNING'
+    session['datetime_started'] = datetime.utcnow()
+
+
+@trainer.on(Events.EPOCH_STARTED)
+def setup_training(trainer):
     model.train()
     torch.set_grad_enabled(True)
 
-    train_bar_postfix = {}
-    loss_nodes_avg = RunningStats()
-    loss_global_avg = RunningStats()
-    loss_total_avg = RunningStats()
 
-    train_bar = tqdm.tqdm(desc=f'Train {epoch_idx}', total=len(dataloader_train.dataset), unit='g')
-    for batch_idx, (_, _, graphs, targets)in enumerate(dataloader_train):
-        graphs = graphs.to(session['device'])
-        targets = targets.to(session['device'])
-        results = model(graphs)
+def update_samples(trainer: Engine, ex, session):
+    num_samples = trainer.state.output['num_samples']
+    ex['samples'] += num_samples
+    session['samples'] += num_samples
 
-        loss_total = torch.tensor(0., device=session['device'])
 
-        if ex['losses']['nodes']['weight'] > 0:
-            node_mask = torch.isfinite(targets.node_features[:, 0])
-            loss_nodes = (
-                targets.node_features[node_mask, 2] *
-                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
-            ).mean()
-            loss_total += ex['losses']['nodes']['weight'] * loss_nodes
-            loss_nodes_avg.add(loss_nodes.item(), len(graphs))
-            train_bar_postfix['Nodes'] = f'{loss_nodes.item():.5f}'
-            if 'every batch' in session['log']:
-                logger.add_scalar('loss/train/nodes', loss_nodes.item(), global_step=ex['samples'])
+def update_completed_epochs(trainer, ex, session):
+    ex['completed_epochs'] += 1
+    session['completed_epochs'] += 1
 
-        if ex['losses']['globals']['weight'] > 0:
-            loss_global = F.mse_loss(
-                results.global_features.squeeze(), targets.global_features.squeeze(), reduction='mean')
-            loss_total += ex['losses']['globals']['weight'] * loss_global
-            loss_global_avg.add(loss_global.item(), len(graphs))
-            train_bar_postfix['Global'] = f'{loss_global.item():.5f}'
-            if 'every batch' in session['log']:
-                logger.add_scalar('loss/train/global', loss_global.mean().item(), global_step=ex["samples"])
 
-        loss_total_avg.add(loss_total.item(), len(graphs))
-        train_bar_postfix['Total'] = f'{loss_total.item():.5f}'
-        if 'every batch' in session['log']:
-            logger.add_scalar('loss/train/total', loss_total.item(), global_step=ex["samples"])
+def save_model(trainer, model, ex, optimizer, session):
+    if session['checkpoint'] != 0 and session['completed_epochs'] % session['checkpoint'] == 0:
+        saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
 
-        optimizer.zero_grad()
-        loss_total.backward()
-        optimizer.step(closure=None)
 
-        ex['samples'] += len(graphs)
-        session['samples'] += len(graphs)
-        train_bar.update(len(graphs))
-        train_bar.set_postfix(train_bar_postfix)
+losses_avg = ProteinAverageLosses(lambda o: (o['loss']['local'], o['loss']['global'], o['num_samples']))
+losses_avg.attach(trainer)
+losses_avg.attach(validator)
 
-        if 'QUICK_RUN' in os.environ and batch_idx >= 5:
-            train_bar.write(f'Interrupting training loop after {batch_idx} batches')
-            break
-    train_bar.close()
+metrics = ProteinMetrics(itemgetter('protein_names', 'model_names', 'results', 'targets'))
+metrics.attach(trainer)
+metrics.attach(validator)
 
-    epoch_bar_postfix['Train'] = f'{loss_total_avg.mean:.4f}'
-    epoch_bar.set_postfix(epoch_bar_postfix)
+pbar_train = ProgressBar(desc='Train')
+pbar_train.attach(trainer, metric_names=losses_avg.losses_names)
+pbar_val = ProgressBar(desc='Valid')
+pbar_val.attach(validator, metric_names=losses_avg.losses_names)
 
-    if 'every epoch' in session['log'] and 'every batch' not in session['log']:
-        logger.add_scalar('loss/train/total', loss_total_avg.mean, global_step=ex['samples'])
-        if session['losses']['nodes'] > 0:
-            logger.add_scalar('loss/train/nodes', loss_nodes_avg.mean, global_step=ex['samples'])
-        if session['losses']['count'] > 0:
-            logger.add_scalar('loss/train/global', loss_global_avg.mean, global_step=ex['samples'])
 
-    del batch_idx, train_bar, train_bar_postfix, loss_nodes_avg, loss_global_avg, loss_total_avg
-    # endregion
+def log_losses_batch(engine, tag):
+    for name, value in engine.state.output['loss'].items():
+        logger.add_scalar(f'{tag}/loss/{name}', engine.state.output['loss'][name], global_step=session['samples'])
 
-    # region Validation loop
+
+def log_losses_avg(engine, tag):
+    for name, value in engine.state.metrics.items():
+        if name.startswith('loss/'):
+            logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
+
+
+def log_metrics(engine, tag):
+    for name, value in engine.state.metrics.items():
+        if name.startswith('metric/'):
+            logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
+
+
+def log_figures(engine, tag):
+    for name, fig in engine.state.metrics.items():
+        if name.startswith('fig/'):
+            logger.add_figure(f'{tag}/{name[4:]}', fig, global_step=session['samples'], close=True)
+
+
+def flush_logger(engine, logger):
+    for writer in logger.all_writers.values():
+        writer.flush()
+
+
+def run_validation(trainer, validator, dataloader_val):
+    validator.run(dataloader_val)
+
+
+trainer.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, session)
+trainer.add_event_handler(Events.ITERATION_COMPLETED, log_losses_batch, 'train')
+
+trainer.add_event_handler(Events.EPOCH_COMPLETED, update_completed_epochs, ex, session)
+trainer.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
+trainer.add_event_handler(Events.EPOCH_COMPLETED, run_validation, validator, dataloader_val)
+
+
+@validator.on(Events.EPOCH_STARTED)
+def setup_validation(validator):
     model.eval()
     torch.set_grad_enabled(False)
 
-    val_bar_postfix = {}
-    loss_nodes_avg = RunningStats()
-    loss_global_avg = RunningStats()
-    loss_total_avg = RunningStats()
 
-    val_bar = tqdm.tqdm(desc=f'Val {epoch_idx}', total=len(dataloader_val.dataset), unit='g')
-    for batch_idx, (protein_name, model_name, graphs, targets) in enumerate(dataloader_val):
-        graphs = graphs.to(session['device'])
-        targets = targets.to(session['device'])
-        results = model(graphs)
-
-        loss_total = torch.tensor(0., device=session['device'])
-
-        if ex['losses']['nodes']['weight'] > 0:
-            node_mask = torch.isfinite(targets.node_features[:, 0])
-            loss_nodes = (
-                targets.node_features[node_mask, 2] *
-                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
-            ).mean()
-            loss_total += ex['losses']['nodes']['weight'] * loss_nodes
-            loss_nodes_avg.add(loss_nodes.item(), len(graphs))
-            val_bar_postfix['Nodes'] = f'{loss_nodes.item():.5f}'
-
-        if ex['losses']['globals']['weight'] > 0:
-            loss_global = F.mse_loss(
-                results.global_features.squeeze(), targets.global_features.squeeze(), reduction='mean')
-            loss_total += ex['losses']['globals']['weight'] * loss_global
-            loss_global_avg.add(loss_global.item(), len(graphs))
-            val_bar_postfix['Global'] = f'{loss_global.item():.5f}'
-
-        val_bar_postfix['Total'] = f'{loss_total.item():.5f}'
-        loss_total_avg.add(loss_total.item(), len(graphs))
-
-        # region Last epoch
-        if epoch_idx == session['max_epochs']:
-            import torch_scatter
-            # Drop residues not present in the native structure
-            present_in_native = targets.node_features[:, 1] == 1.
-            global_indices = graphs.node_index_by_graph[present_in_native]
-
-            # Set to 0 the score of the residues not present in the model
-            local_scores = results.node_features[present_in_native, 0]
-            missing_in_model = graphs.node_features[present_in_native, 82] == 0.
-            local_scores[missing_in_model] = 0.
-
-            global_scores = torch_scatter.scatter_mean(local_scores, index=global_indices, dim=0, dim_size=graphs.num_graphs)
-
-            graphs_df['ProteinName'].append(np.array(protein_name))
-            graphs_df['ModelName'].append(np.array(model_name))
-            graphs_df['GlobalScoreTrue'].append(targets.global_features.squeeze(dim=1).cpu())
-            graphs_df['GlobalScoreComputed'].append(global_scores.cpu())
-            graphs_df['GlobalScorePredicted'].append(results.global_features.squeeze(dim=1).cpu())
-
-            nodes_df['ProteinName'].append(np.repeat(np.array(protein_name), graphs.num_nodes_by_graph.cpu()))
-            nodes_df['ModelName'].append(np.repeat(np.array(model_name), graphs.num_nodes_by_graph.cpu()))
-            nodes_df['NodeId'].append(np.concatenate([np.arange(n) for n in graphs.num_nodes_by_graph.cpu()]))
-            nodes_df['LocalScoreTrue'].append(targets.node_features[:, 0].cpu())
-            nodes_df['LocalScorePredicted'].append(results.node_features.squeeze().cpu())
-        # endregion
-
-        val_bar.update(len(graphs))
-        val_bar.set_postfix(val_bar_postfix)
-
-        if 'QUICK_RUN' in os.environ and batch_idx >= 5:
-            val_bar.write(f'Interrupting validation loop after {batch_idx} batches')
-            break
-    val_bar.close()
-
-    ex['completed_epochs'] += 1
-    session['completed_epochs'] += 1
-    epoch_bar_postfix['Val'] = f'{loss_total_avg.mean:.4f}'
-    epoch_bar.set_postfix(epoch_bar_postfix)
-
-    if (
-            'every batch' in session['log'] or
-            'every epoch' in session['log'] or
-            'last epoch' in session['log'] and epoch_idx == session['max_epochs']
-    ):
-        logger.add_scalar('loss/val/total', loss_total_avg.mean, global_step=ex['samples'])
-        if ex['losses']['nodes']['weight'] > 0:
-            logger.add_scalar('loss/val/nodes', loss_nodes_avg.mean, global_step=ex['samples'])
-        if ex['losses']['globals']['weight'] > 0:
-            logger.add_scalar('loss/val/global', loss_global_avg.mean, global_step=ex['samples'])
-
-    del batch_idx, val_bar, val_bar_postfix, loss_nodes_avg, loss_global_avg, loss_total_avg
-    # endregion
-
-    # Saving
-    if epoch_idx == session['max_epochs']:
-        session['status'] = 'DONE'
-        session['datetime_completed'] = datetime.utcnow()
-    if (
-            'every batch' in session['checkpoint'] or
-            'every epoch' in session['checkpoint'] or
-            ('last epoch' in session['checkpoint'] and epoch_idx == session['max_epochs'])
-    ):
-        saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
-epoch_bar.close()
-print()
-del epoch_bar, epoch_bar_postfix, epoch_idx
-# endregion
-
-# region Final report
-if 'cuda' in session['device']:
-    for device_id, device_info in session['cuda']['devices'].items():
-        device_info.update({
-            'memory_used_max': f'{torch.cuda.max_memory_allocated(device_id) // (10**6)} MiB',
-            'memory_cached_max': f'{torch.cuda.max_memory_cached(device_id) // (10**6)} MiB',
-        })
-    print('GPU usage:', pyaml.dump(session['cuda']['devices'], safe=True, sort_dicts=False), sep='\n')
-
-metrics = ex['metrics'] = session['metrics'] = {'local': {}, 'globals': {}, 'globals_computed': {}}
-graphs_df = pd.DataFrame({k: np.concatenate(v) for k, v in graphs_df.items()})
-
-metrics['globals']['rmse'] = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted']))
-metrics['globals']['R2'] = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])
-metrics['globals']['R2_per_target'] = graphs_df.groupby('ProteinName') \
-    .apply(lambda df: r2_score(df['GlobalScoreTrue'], df['GlobalScorePredicted'])) \
-    .mean()
-metrics['globals']['pearson_R'] = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'])[0]
-metrics['globals']['pearson_R_per_target'] = graphs_df.groupby('ProteinName') \
-    .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScorePredicted'])[0]) \
-    .mean()
-
-metrics['globals_computed']['rmse'] = np.sqrt(mean_squared_error(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScoreComputed']))
-metrics['globals_computed']['R2'] = r2_score(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScoreComputed'])
-metrics['globals_computed']['R2_per_target'] = graphs_df.groupby('ProteinName') \
-    .apply(lambda df: r2_score(df['GlobalScoreTrue'], df['GlobalScoreComputed'])) \
-    .mean()
-metrics['globals_computed']['pearson_R'] = pearsonr(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScoreComputed'])[0]
-metrics['globals_computed']['pearson_R_per_target'] = graphs_df.groupby('ProteinName') \
-    .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScoreComputed'])[0]) \
-    .mean()
-
-nodes_df = pd.DataFrame({k: np.concatenate(v) for k, v in nodes_df.items()}).dropna(subset=['LocalScoreTrue'])
-metrics['local']['rmse'] = np.sqrt(mean_squared_error(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted']))
-metrics['local']['R2'] = r2_score(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
-metrics['local']['R2_per_model'] = nodes_df.groupby(['ProteinName', 'ModelName']) \
-    .apply(lambda df: r2_score(df['LocalScoreTrue'], df['LocalScorePredicted'])) \
-    .mean()
-metrics['local']['pearson_R'] = pearsonr(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])[0]
-metrics['local']['pearson_R_per_model'] = nodes_df.groupby(['ProteinName', 'ModelName']) \
-    .apply(lambda df: pearsonr(df['LocalScoreTrue'], df['LocalScorePredicted'])[0]) \
-    .mean()
-
-pyaml.pprint(metrics, safe=True, sort_dicts=False, force_embed=True, width=200)
-for category in metrics:
-    for name, value in metrics[category].items():
-        logger.add_scalar(f'metric/{category}/{name}', value, global_step=ex['samples'])
+def update_metrics(validator, ex, session):
+    metrics = build_dict((k.split('/'), v) for k, v in validator.state.metrics.items() if k.startswith('metric/'))
+    ex['metrics'] = session['metrics'] = metrics
 
 
-def plot_metrics(nodes_df, graphs_df, metrics):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
-
-    ax = axes[0]
-    ax.hist2d(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'], bins=np.linspace(0, 1, 100+1))
-    ax.set_title(f'Local Scores (R: {metrics["local"]["pearson_R"]:.3f} R2: {metrics["local"]["R2"]:.3f})')
-    ax.set_xlabel('True')
-    ax.set_ylabel('Predicted')
-    ax.plot([0, 1], [0, 1], color='red', linestyle='--')
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-
-    ax = axes[1]
-    ax.hist2d(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'], bins=np.linspace(0, 1, 100+1))
-    ax.set_title(f'Global Scores (R: {metrics["globals"]["pearson_R"]:.3f} R2: {metrics["globals"]["R2"]:.3f})')
-    ax.set_xlabel('True')
-    ax.set_ylabel('Predicted')
-    ax.plot([0, 1], [0, 1], color='red', linestyle='--')
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-
-    return fig
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
+validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, ex, session)
 
 
-logger.add_figure('metrics', plot_metrics(nodes_df, graphs_df, metrics), close=True, global_step=ex['samples'])
+@trainer.on(Events.COMPLETED, session)
+def session_end(trainer, session):
+    session['status'] = 'COMPLETED'
+    session['datetime_completed'] = datetime.utcnow()
+    elapsed = session["datetime_completed"] - session["datetime_started"]
 
-logger.add_text('Experiment',
-                textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
-                ex['samples'])
+    print(f'Completed {session["completed_epochs"]} epochs in {round_timedelta(elapsed)} '
+          f'({round_timedelta(elapsed / session["completed_epochs"])} per epoch)')
 
-del graphs_df, nodes_df
-# endregion
+    if 'cuda' in session['device']:
+        for device_id, device_info in session['cuda']['devices'].items():
+            device_info.update({
+                'memory_used_max': f'{torch.cuda.max_memory_allocated(device_id) // (10**6)} MiB',
+                'memory_cached_max': f'{torch.cuda.max_memory_cached(device_id) // (10**6)} MiB',
+            })
+        print(pyaml.dump(session['cuda']['devices'], safe=True, sort_dicts=False), sep='\n')
 
-# region Cleanup
-saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
+    print(pyaml.dump(session['metrics']))
+
+    logger.add_text('Experiment',
+                    textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
+                    ex['samples'])
+
+
+trainer.run(dataloader_train, max_epochs=session['max_epochs'])
 logger.close()
-# endregion
