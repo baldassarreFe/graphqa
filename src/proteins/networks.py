@@ -111,8 +111,8 @@ class ProteinGN(nn.Module):
 
         return graphs.evolve(
             node_features=graphs.node_features,
-            num_edges=0,
             num_edges_by_graph=None,
+            edge_index_by_graph=None,
             edge_features=None,
             global_features=graphs.global_features,
             senders=None,

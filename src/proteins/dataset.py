@@ -43,7 +43,6 @@ class ProteinFolder(torch.utils.data.Dataset):
         edge_features[:, 0] = (- edge_features[:, 0].pow(2) / (2 * self.cutoff)).exp()
 
         graph_in = graph_in.evolve(
-            num_edges=len(edge_features),
             senders=graph_in.senders[to_keep],
             receivers=graph_in.receivers[to_keep],
             edge_features=edge_features,
@@ -69,6 +68,7 @@ class ProteinFolder(torch.utils.data.Dataset):
 
 
 def process_file(filepath, destpath):
+    import tqdm
     import tables
     import pandas as pd
 
@@ -78,12 +78,14 @@ def process_file(filepath, destpath):
     all_local_scores = []
     all_global_scores = []
 
+    bar = tqdm.tqdm(desc='Preprocessing', unit=' model')
     with tables.open_file(filepath) as h5_file:
         proteins = (
             p for p in h5_file.list_nodes('/')
             if not (p._v_pathname.startswith('/casp') or p._v_pathname.startswith('/cameo'))
         )
         for i, protein in enumerate(proteins):
+            bar.set_postfix_str(f'Protein {protein._v_pathname[1:]}')
             all_global_scores += np.array(protein.lddt_global).tolist()
             all_local_scores += np.array(protein.lddt).ravel().tolist()
 
@@ -91,6 +93,8 @@ def process_file(filepath, destpath):
             for j in range(num_models):
                 sample = process_protein(protein, j)
                 torch.save(sample, destpath / f'sample_{i}_{j}.pt')
+                bar.update()
+    bar.close()
 
     all_local_scores = pd.Series(all_local_scores, name='local_scores').dropna()
     all_global_scores = pd.Series(all_global_scores, name='global_scores').dropna()
@@ -147,11 +151,11 @@ def process_protein(protein, model_idx):
             dssp_features,
             structure_determined[:, None] * 2 - 1
         ], axis=1)).float(),
-        num_edges=2 * len(edge_features),
         senders=torch.from_numpy(np.concatenate((senders, receivers))),
         receivers=torch.from_numpy(np.concatenate((receivers, senders))),
         edge_features=torch.from_numpy(edge_features).repeat(2, 1).float()
-    )
+    ).validate()
+
     graph_target = tg.Graph(
         num_nodes=sequence_length,
         node_features=torch.from_numpy(np.stack([
@@ -159,7 +163,7 @@ def process_protein(protein, model_idx):
            native_determined
         ], axis=1)).float(),
         global_features=torch.tensor([global_score]).float()
-    )
+    ).validate()
 
     return protein_name, provider, graph_in, graph_target
 
