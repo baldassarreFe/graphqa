@@ -1,9 +1,7 @@
 import argparse
 from pathlib import Path
 
-from tensorboardX import SummaryWriter
-# Use this when they fix the error with SummaryMetadata.PluginData
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('folder', help='The log folder to place the layout in')

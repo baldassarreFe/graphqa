@@ -1,13 +1,11 @@
-from datetime import timedelta
-
 import yaml
 import itertools
 import subprocess
 import collections
+from datetime import timedelta
 from typing import Mapping, Iterable, MutableMapping
 
 import numpy as np
-from munch import munchify, AutoMunch
 
 
 def git_info():

@@ -1,7 +1,8 @@
 import math
 from collections import OrderedDict
+
 import torch
-from torch import nn
+import torch.nn as nn
 import numpy as np
 
 import torchgraphs as tg

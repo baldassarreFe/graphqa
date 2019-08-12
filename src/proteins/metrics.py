@@ -118,8 +118,7 @@ class ProteinMetrics(Metric):
         protein_names, model_names, preds, targets = output
 
         # All metrics: skip native structures
-        non_native = torch.tensor(
-            np.char.not_equal(model_names, 'native'), device=preds.node_features.device, dtype=torch.uint8)
+        non_native = torch.tensor(np.char.not_equal(model_names, 'native'), device=preds.node_features.device)
 
         # Local metrics: ignore residues that don't have a ground-truth score 
         valid_scores = torch.isfinite(targets.node_features[:, 0])
