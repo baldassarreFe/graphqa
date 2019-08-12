@@ -14,7 +14,7 @@ RUN FZF_BASE="${HOME}/.fzf" && \
     git clone --depth 1 https://github.com/junegunn/fzf.git "${FZF_BASE}" && "${FZF_BASE}"/install && \
     sed '/^plugins=(git)/ a plugins+=(fzf)' -i /root/.zshrc
 
-RUN pip3 install powerline-status && \
+RUN pip3 install --no-cache-dir powerline-status && \
     apt-get -y install fonts-powerline
 
 COPY .zshrc.addons /root/.zshrc.addons
@@ -27,26 +27,26 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     rm miniconda.sh && \
     /root/miniconda/bin/conda init zsh
 
-RUN source /root/.zshrc && \
-    conda activate base && \
-    conda install python=3.7 numpy matplotlib pandas jupyterlab jupyter_console tqdm scipy scikit-learn && \
-    conda install pytorch cudatoolkit=10.0 -c pytorch && \
-    conda clean --all
+# Packages I commonly use, but these will be installed later from conda.yaml
+# RUN source /root/.zshrc && \
+#     conda activate base && \
+#     conda install -c pytorch defaults python=3.7 numpy matplotlib pandas jupyterlab jupyter_console tqdm scipy scikit-learn pytorch cudatoolkit=10.0 && \
+#     conda clean --all
 
-# Jupyter lab
-EXPOSE 8888
+# If installed, expose port for Jupyter lab
+# EXPOSE 8888
 
+# If installed, expose port for Tensorboard
+# EXPOSE 6006
+
+# Install project-specific dependencies
 COPY conda.yaml /conda.yaml
 RUN source /root/.zshrc && \
     conda env update -n base --file /conda.yaml && \
-    conda clean --all
+    conda clean --quiet --yes --all
 
-# Tensorboard
-EXPOSE 6006
-
-COPY torchgraphs /torchgraphs
 RUN source /root/.zshrc && \
     conda activate base && \
-    pip install /torchgraphs
+    pip --no-cache-dir install git+https://github.com/baldassarreFe/torchgraphs@develop
 
 CMD zsh

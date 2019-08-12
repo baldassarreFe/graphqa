@@ -13,14 +13,14 @@ pip install --quiet /proteins/src && echo "Installed proteins@$(cd /proteins/src
 if [[ -n "$@" ]]; then
     echo -e "Executing CMD: $@\n"
     zsh -c "$@"
-    OUT_CODE=$?
+    EXIT_CODE=$?
 else
     echo -e "Starting a zsh shell...\n"
     zsh
-    OUT_CODE=$?
+    EXIT_CODE=$?
 fi
 
 # Fix permissions for artifacts created as root
 chown --from=$(id -u):$(id -g) --recursive --changes ${EXTERNAL_USER}:${EXTERNAL_USER} /proteins/runs
 
-exit "$OUT_CODE"
+exit "$EXIT_CODE"

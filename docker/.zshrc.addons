@@ -10,3 +10,6 @@ alias tb='tensorboard --logdir'
 
 # Disable auto updates
 DISABLE_AUTO_UPDATE="true"
+
+# Force cuda to list devices in the same order as nvidia-smi
+CUDA_DEVICE_ORDER=PCI_BUS_ID
