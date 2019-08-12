@@ -8,7 +8,7 @@ nvidia-smi
 
 source /root/.zshrc
 conda activate base
-pip install /root/proteins > /dev/null && echo "Installed proteins@$(cd /root/proteins && git rev-parse --short HEAD)"
+pip install --quiet /proteins/src && echo "Installed proteins@$(cd /proteins/src && git rev-parse --short HEAD)"
 
 if [[ -n "$@" ]]; then
     echo -e "Executing CMD: $@\n"
@@ -21,6 +21,6 @@ else
 fi
 
 # Fix permissions for artifacts created as root
-chown --from=$(id -u):$(id -g) --recursive --changes ${EXTERNAL_USER}:${EXTERNAL_USER} /root/proteins/runs
+chown --from=$(id -u):$(id -g) --recursive --changes ${EXTERNAL_USER}:${EXTERNAL_USER} /proteins/runs
 
 exit "$OUT_CODE"
