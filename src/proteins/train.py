@@ -238,8 +238,9 @@ def training_function(trainer, batch):
 
     if ex['losses']['nodes']['weight'] > 0:
         node_mask = torch.isfinite(targets.node_features[:, 0])
+        node_weights = targets.node_features[node_mask, 2] if ex['losses']['nodes']['use_local_weights'] else 1.
         loss_nodes = (
-                targets.node_features[node_mask, 2] *
+                node_weights *
                 F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
         ).mean()
     else:
@@ -282,8 +283,9 @@ def validation_function(validator, batch):
 
     if ex['losses']['nodes']['weight'] > 0:
         node_mask = torch.isfinite(targets.node_features[:, 0])
+        node_weights = targets.node_features[node_mask, 2] if ex['losses']['nodes']['use_local_weights'] else 1.
         loss_nodes = (
-                targets.node_features[node_mask, 2] *
+                node_weights *
                 F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
         ).mean()
     else:
