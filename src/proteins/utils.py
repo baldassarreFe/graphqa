@@ -57,7 +57,8 @@ def cuda_info():
         if child.tag == 'driver_version':
             driver = child.text
         elif child.tag == 'gpu':
-            devices[f'cuda:{child.find("minor_number").text}'] = {
+            gpu_id = f'cuda:{len(devices)}'
+            devices[gpu_id] = {
                 'model': child.find('product_name').text,
                 'utilization': child.find('utilization').find('gpu_util').text,
                 'memory_used': child.find('fb_memory_usage').find('used').text,
@@ -91,7 +92,7 @@ def update_rec(target, source):
             update_rec(target[k], source[k])
         else:
             # AutoMunch should do its job, but sometimes it doesn't
-            target[k] = munchify(source[k], AutoMunch)
+            target[k] = source[k]
 
 
 def import_(fullname):
