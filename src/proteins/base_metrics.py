@@ -3,6 +3,7 @@ from typing import Tuple, Union
 
 import torch
 import numpy as np
+from ignite.engine import Events
 from ignite.exceptions import NotComputableError
 from ignite.metrics import Metric, MeanSquaredError
 
@@ -215,6 +216,25 @@ class R2(Metric):
 
     def compute(self):
         return 1 - self._sum_squared_error / self._moment_true
+
+
+class GpuMaxMemoryAllocated(Metric):
+    """Max GPU memory allocated in MB"""
+
+    def update(self, output):
+        pass
+
+    def reset(self):
+        for i in range(torch.cuda.device_count()):
+            torch.cuda.reset_max_memory_allocated(i)
+
+    def compute(self):
+        return max(torch.cuda.max_memory_allocated(i) for i in range(torch.cuda.device_count())) // 2**20
+
+    def attach(self, engine, name):
+        engine.add_event_handler(Events.EPOCH_COMPLETED, self.completed, name)
+        if not engine.has_event_handler(self.started, Events.EPOCH_STARTED):
+            engine.add_event_handler(Events.EPOCH_STARTED, self.started)
 
 
 def test():

@@ -29,6 +29,7 @@ from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
 from .dataset import ProteinFolder
 from .metrics import ProteinMetrics, ProteinAverageLosses
+from .base_metrics import GpuMaxMemoryAllocated
 
 # region Arguments parsing
 ex = parse_args(config={
@@ -356,6 +357,11 @@ metrics = ProteinMetrics(itemgetter('protein_names', 'model_names', 'results', '
 metrics.attach(trainer)
 metrics.attach(validator)
 
+gpu_max_memory_allocated = GpuMaxMemoryAllocated()
+gpu_max_memory_allocated.attach(trainer, 'misc/gpu')
+gpu_max_memory_allocated.attach(validator, 'misc/gpu')
+
+# During training and validation, the progress bar shows the average loss over all batches processed so far
 pbar_train = ProgressBar(desc='Train')
 pbar_train.attach(trainer, metric_names=losses_avg.losses_names)
 pbar_val = ProgressBar(desc='Valid')
@@ -363,11 +369,13 @@ pbar_val.attach(validator, metric_names=losses_avg.losses_names)
 
 
 def log_losses_batch(engine, tag):
+    """Log the losses for the current batch, to be called at every iteration"""
     for name, value in engine.state.output['loss'].items():
         logger.add_scalar(f'{tag}/loss/{name}', engine.state.output['loss'][name], global_step=session['samples'])
 
 
 def log_losses_avg(engine, tag):
+    """Log the avg of the losses for the current epoch, to be called at the end of an epoch"""
     for name, value in engine.state.metrics.items():
         if name.startswith('loss/'):
             logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
@@ -377,6 +385,12 @@ def log_metrics(engine, tag):
     for name, value in engine.state.metrics.items():
         if name.startswith('metric/'):
             logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
+
+
+def log_misc(engine, tag):
+    for name, value in engine.state.metrics.items():
+        if name.startswith('misc/'):
+            logger.add_scalar(f'{name}/{tag}', value, global_step=session['samples'])
 
 
 def log_figures(engine, tag):
@@ -401,6 +415,7 @@ trainer.add_event_handler(Events.EPOCH_COMPLETED, update_completed_epochs, ex, s
 trainer.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'train')
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'train')
 trainer.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
 trainer.add_event_handler(Events.EPOCH_COMPLETED, run_validation, validator, dataloader_val)
 
@@ -419,6 +434,7 @@ def update_metrics(validator, ex, session):
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
 validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, ex, session)
 
