@@ -18,7 +18,8 @@ class ProteinGN(nn.Module):
             hidden_size_out_edges=64,
             hidden_size_out_nodes=128,
             hidden_size_out_globals=32,
-            dropout=0
+            dropout=0,
+            batch_norm=False,
     ):
         super().__init__()
         self.layers = []
@@ -28,22 +29,26 @@ class ProteinGN(nn.Module):
         # Global feature shape: None -> hidden_size_in_globals
         self.encoder = nn.Sequential(OrderedDict({
             'edge1': tg.EdgeLinear(out_features=hidden_size_in_edges//2, edge_features=2),
+            'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
+            'edge1_bn': tg.EdgeBatchNorm(num_features=hidden_size_in_edges//2) if batch_norm else nn.Identity(),
             'edge1_relu': tg.EdgeReLU(),
-            'edge1_dropout': tg.EdgeDropout(p=dropout),
             'edge2': tg.EdgeLinear(out_features=hidden_size_in_edges, edge_features=hidden_size_in_edges//2),
-            'edge2_relu': tg.EdgeReLU(),
             'edge2_dropout': tg.EdgeDropout(p=dropout),
+            'edge2_bn': tg.EdgeBatchNorm(num_features=hidden_size_in_edges) if batch_norm else nn.Identity(),
+            'edge2_relu': tg.EdgeReLU(),
 
             'node1': tg.NodeLinear(out_features=hidden_size_in_nodes//2, node_features=83),
+            'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
+            'node1_bn': tg.NodeBatchNorm(num_features=hidden_size_in_nodes//2) if batch_norm else nn.Identity(),
             'node1_relu': tg.NodeReLU(),
-            'node1_dropout': tg.NodeDropout(p=dropout),
             'node2': tg.NodeLinear(out_features=hidden_size_in_nodes, node_features=hidden_size_in_nodes//2),
+            'node2_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
+            'node2_bn': tg.NodeBatchNorm(num_features=hidden_size_in_nodes) if batch_norm else nn.Identity(),
             'node2_relu': tg.NodeReLU(),
-            'node2_dropout': tg.NodeDropout(p=dropout),
 
             'global': tg.GlobalLinear(out_features=hidden_size_in_globals, bias=True),
+            'global_dropout': tg.GlobalDropout(p=dropout) if dropout > 0 else nn.Identity(),
             'global_relu': tg.GlobalReLU(),
-            'global_dropout': tg.GlobalDropout(p=dropout),
         }))
 
         # Edge, node and global shapes decrease from
@@ -66,8 +71,9 @@ class ProteinGN(nn.Module):
                     sender_features=in_n,
                     global_features=in_g
                 ),
+                'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
+                'edge1_bn': tg.EdgeBatchNorm(num_features=out_e) if batch_norm else nn.Identity(),
                 'edge1_relu': tg.EdgeReLU(),
-                'edge1_dropout': tg.EdgeDropout(p=dropout),
 
                 'node1': tg.NodeLinear(
                     out_features=out_n,
@@ -76,8 +82,9 @@ class ProteinGN(nn.Module):
                     global_features=in_g,
                     aggregation='mean',
                 ),
+                'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
+                'node1_bn': tg.NodeBatchNorm(num_features=out_n) if batch_norm else nn.Identity(),
                 'node1_relu': tg.NodeReLU(),
-                'node1_dropout': tg.NodeDropout(p=dropout),
 
                 'global1': tg.GlobalLinear(
                     out_features=out_g,
@@ -86,8 +93,9 @@ class ProteinGN(nn.Module):
                     global_features=in_g,
                     aggregation='mean',
                 ),
+                'global1_dropout': tg.GlobalDropout(p=dropout) if dropout > 0 else nn.Identity(),
+                'global1_bn': tg.GlobalBatchNorm(num_features=out_g) if batch_norm else nn.Identity(),
                 'global1_relu': tg.GlobalReLU(),
-                'global1_dropout': tg.GlobalDropout(p=dropout),
             }))
             self.layers.append(layer)
             in_e, in_n, in_g = out_e, out_n, out_g
@@ -103,8 +111,6 @@ class ProteinGN(nn.Module):
             'global_sigmoid': tg.GlobalSigmoid()
         }))
 
-        _reset_parameters(self)
-
     def forward(self, graphs):
         graphs = self.encoder(graphs)
         graphs = self.layers(graphs)
@@ -119,12 +125,3 @@ class ProteinGN(nn.Module):
             senders=None,
             receivers=None
         )
-
-
-def _reset_parameters(module):
-    for name, param in module.named_parameters():
-        if 'bias' in name:
-            bound = 1 / math.sqrt(param.numel())
-            nn.init.uniform_(param, -bound, bound)
-        else:
-            nn.init.kaiming_uniform_(param, a=math.sqrt(5))
