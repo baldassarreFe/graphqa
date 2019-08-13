@@ -47,6 +47,6 @@ RUN source /root/.zshrc && \
 
 RUN source /root/.zshrc && \
     conda activate base && \
-    pip --no-cache-dir install git+https://github.com/baldassarreFe/torchgraphs@develop
+    pip --no-cache-dir install git+https://github.com/baldassarreFe/torchgraphs@0c33a3b
 
 CMD zsh
