@@ -134,7 +134,7 @@ pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 set_seeds(session['seed'])
 
 # Saver
-saver = Saver(Path(os.environ.get('RUN_FOLDER', './runs')).joinpath(ex['fullname']))
+saver = Saver(Path(os.environ.get('RUNS_FOLDER', './runs')).joinpath(ex['fullname']))
 if ex['completed_epochs'] == 0:
     saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
 
