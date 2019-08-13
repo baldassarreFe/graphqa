@@ -10,7 +10,7 @@ from torchgraphs import GraphBatch
 
 import torch
 from ignite.engine import Events
-from ignite.metrics import Metric, RootMeanSquaredError, RunningAverage
+from ignite.metrics import Metric, RootMeanSquaredError, RunningAverage, MetricsLambda
 from ignite.exceptions import NotComputableError
 
 from .config import flatten_dict
@@ -65,11 +65,12 @@ class ProteinAverageLosses(Metric):
 
 
 class ProteinMetrics(Metric):
-    class GlobalCorrelationPerTarget(object):
+    class MoreGlobalMetrics(object):
         """Fake metric, just because it was convenient to have the same methods of ignite.metrics.Metric"""
 
         def __init__(self):
             self.df = {'target': [], 'global_score_preds': [], 'global_score_targets': []}
+            self.metric_names = ['correlation_per_target', 'first_rank_loss']
 
         def reset(self):
             self.df = {'target': [], 'global_score_preds': [], 'global_score_targets': []}
@@ -79,11 +80,23 @@ class ProteinMetrics(Metric):
             self.df['global_score_preds'].append(global_preds.detach().cpu())
             self.df['global_score_targets'].append(global_targets.detach().cpu())
 
+        @staticmethod
+        def _first_rank_loss(predicted, true):
+            return true.max() - true[predicted.idxmax()]
+
         def compute(self):
-            return pd.DataFrame({col: np.concatenate(seq) for col, seq in self.df.items()}) \
-                .groupby('target') \
+            df = pd.DataFrame({col: np.concatenate(seq) for col, seq in self.df.items()})
+            grouped = df.groupby('target')
+            r_per_target = grouped \
                 .apply(lambda df: pearsonr(df['global_score_preds'], df['global_score_targets'])[0]) \
                 .mean()
+            frl = grouped \
+                .apply(lambda df: self._first_rank_loss(df['global_score_preds'], df['global_score_targets'])) \
+                .mean()
+            return {
+                'correlation_per_target': r_per_target,
+                'first_rank_loss': frl,
+            }
 
     def __init__(self, output_transform=lambda x: x):
         self.local_metrics = {
@@ -96,19 +109,23 @@ class ProteinMetrics(Metric):
             'r2': R2(),
             'rmse': RootMeanSquaredError(),
             'correlation': PearsonR(),
-            'correlation_per_target': ProteinMetrics.GlobalCorrelationPerTarget()
         }
+        self.more_global_metrics = ProteinMetrics.MoreGlobalMetrics()
         self.figs = {
             'local': ScoreHistogram(title='Local scores'),
             'global': ScoreHistogram(title='Global scores')
         }
-        self.metric_names = [*('metric/local/' + n for n in self.local_metrics),
-                             *('metric/global/' + n for n in self.global_metrics)]
+        self.metric_names = [
+            *('metric/local/' + n for n in self.local_metrics),
+            *('metric/global/' + n for n in self.global_metrics),
+            *('metric/global/' + n for n in self.more_global_metrics.metric_names)
+        ]
         self.fig_names = ['fig/' + n for n in self.figs]
         super(ProteinMetrics, self).__init__(output_transform)
         
     def reset(self):
-        for metric in chain(self.local_metrics.values(), self.global_metrics.values(), self.figs.values()):
+        for metric in chain(self.local_metrics.values(), self.global_metrics.values(),
+                            (self.more_global_metrics,), self.figs.values()):
             metric.reset()
 
     def attach(self, engine, **kwargs):
@@ -128,7 +145,6 @@ class ProteinMetrics(Metric):
         self.local_metrics['r2'].update((node_preds, node_targets))
         self.local_metrics['rmse'].update((node_preds, node_targets))
         self.local_metrics['correlation'].update((node_preds, node_targets))
-        self.figs['local'].update((node_preds, node_targets))
 
         # Local correlation per model is a bit more complex, pandas is the easiest way to get a groupby
         # This dataframe is already constructed without native structures and NaN targets
@@ -146,18 +162,26 @@ class ProteinMetrics(Metric):
         self.global_metrics['r2'].update((global_preds, global_targets))
         self.global_metrics['rmse'].update((global_preds, global_targets))
         self.global_metrics['correlation'].update((global_preds, global_targets))
-        self.global_metrics['correlation_per_target'].update(
+        self.more_global_metrics.update(
             np.array(protein_names)[non_native.cpu().numpy().astype(np.bool)], global_preds, global_targets)
+
+        # Figures
+        self.figs['local'].update((node_preds, node_targets))
         self.figs['global'].update((global_preds, global_targets))
 
     def compute(self):
         metrics = {
             'local': {name: metric.compute() for name, metric in self.local_metrics.items()},
-            'global': {name: metric.compute() for name, metric in self.global_metrics.items()}
+            'global': {
+                **{name: metric.compute() for name, metric in self.global_metrics.items()},
+                **self.more_global_metrics.compute()
+            }
         }
         figs = {
-            'local': self.figs['local'].compute(metrics['local']['correlation'], metrics['local']['r2']),
-            'global': self.figs['global'].compute(metrics['global']['correlation'], metrics['global']['r2'])
+            'local': self.figs['local'].compute(
+                pearson_r=metrics['local']['correlation'], r_squared=metrics['local']['r2']),
+            'global': self.figs['global'].compute(
+                pearson_r=metrics['global']['correlation'], r_squared=metrics['global']['r2'])
         }
         return {'metric': metrics, 'fig': figs}
 
@@ -314,6 +338,9 @@ def test():
         mask = np.isfinite(true)
         return r2_score(true[mask], predicted[mask])
 
+    def first_rank_loss(true, predicted):
+        return true.max() - true[predicted.idxmax()]
+
     metrics['local']['rmse'] = nanrmse(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
     metrics['local']['r2'] = nanr2(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
     metrics['local']['correlation'] = nanpearsonr(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'])
@@ -329,12 +356,15 @@ def test():
     metrics['globals']['correlation_per_target'] = graphs_df.groupby('ProteinName') \
         .apply(lambda df: pearsonr(df['GlobalScoreTrue'], df['GlobalScorePredicted'])[0]) \
         .mean()
+    metrics['globals']['first_rank_loss'] = graphs_df.groupby('ProteinName') \
+        .apply(lambda df: first_rank_loss(df['GlobalScoreTrue'], df['GlobalScorePredicted'])) \
+        .mean()
 
     print(pyaml.dump({'pandas': metrics}, safe=True))
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=100)
     ax.hist2d(nodes_df['LocalScoreTrue'], nodes_df['LocalScorePredicted'], bins=np.linspace(0, 1, 100+1))
-    ax.set_title(f'Local Scores (R: {metrics["local"]["correlation"]:.3f} R2: {metrics["local"]["r2"]:.3f})')
+    ax.set_title(f'Local Scores R: {metrics["local"]["correlation"]:.3f} R2: {metrics["local"]["r2"]:.3f}')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
     ax.plot([0, 1], [0, 1], color='red', linestyle='--')
@@ -344,7 +374,7 @@ def test():
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=100)
     ax.hist2d(graphs_df['GlobalScoreTrue'], graphs_df['GlobalScorePredicted'], bins=np.linspace(0, 1, 100+1))
-    ax.set_title(f'Global Scores (R: {metrics["globals"]["correlation"]:.3f} R2: {metrics["globals"]["r2"]:.3f})')
+    ax.set_title(f'Global Scores R: {metrics["globals"]["correlation"]:.3f} R2: {metrics["globals"]["r2"]:.3f}')
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
     ax.plot([0, 1], [0, 1], color='red', linestyle='--')
