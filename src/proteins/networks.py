@@ -1,4 +1,3 @@
-import math
 from collections import OrderedDict
 
 import torch
@@ -6,6 +5,8 @@ import torch.nn as nn
 import numpy as np
 
 import torchgraphs as tg
+
+from . import features
 
 
 class ProteinGN(nn.Module):
@@ -105,9 +106,10 @@ class ProteinGN(nn.Module):
         # Node feature shape: hidden_size_out_nodes -> 1
         # Global feature shape: hidden_size_out_globals -> 1
         self.readout = nn.Sequential(OrderedDict({
-            'node': tg.NodeLinear(1, node_features=hidden_size_out_nodes),
+            'node': tg.NodeLinear(features.Output.Node.LENGTH, node_features=hidden_size_out_nodes),
             'node_sigmoid': tg.NodeSigmoid(),
-            'global': tg.GlobalLinear(1, global_features=hidden_size_out_globals, node_features=1, aggregation='mean'),
+            'global': tg.GlobalLinear(features.Output.Global.LENGTH,
+                                      global_features=hidden_size_out_globals, node_features=1, aggregation='mean'),
             'global_sigmoid': tg.GlobalSigmoid()
         }))
 

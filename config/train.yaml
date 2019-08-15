@@ -9,10 +9,15 @@ optimizer:
   weight_decay: 0
 
 losses:
-  nodes:
+  local_lddt:
     name: mse
     weight: 1
-    use_local_weights: True
-  globals:
+    balanced: True
+  global_lddt:
     name: mse
     weight: 1
+    balanced: True
+  global_gdtts:
+    name: mse
+    weight: 1
+    balanced: True

@@ -17,12 +17,13 @@ import torch
 import torch.utils.data
 import torch.nn.functional as F
 import torchgraphs as tg
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 
 from ignite.engine import Engine, Events
 from ignite.contrib.handlers import ProgressBar
 
-from .config import build_dict
+from . import features
+from .config import build_dict, flatten_dict
 from .utils import round_timedelta
 from .config import parse_args
 from .saver import Saver
@@ -41,8 +42,9 @@ ex = parse_args(config={
     'model': {},
     'optimizer': {},
     'losses': {
-        'nodes': {},
-        'globals': {},
+        'local_lddt': {},
+        'global_lddt': {},
+        'global_gdtts': {},
     },
     'metrics': {},
     'history': [],
@@ -237,25 +239,47 @@ def training_function(trainer, batch):
     targets = targets.to(session['device'])
     results = model(graphs)
 
-    if ex['losses']['nodes']['weight'] > 0:
-        node_mask = torch.isfinite(targets.node_features[:, 0])
-        node_weights = targets.node_features[node_mask, 2] if ex['losses']['nodes']['use_local_weights'] else 1.
-        loss_nodes = (
-                node_weights *
-                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
-        ).mean()
-    else:
-        loss_nodes = 0
+    loss_local_lddt = torch.tensor(0., device=session['device'])
+    loss_global_lddt = torch.tensor(0., device=session['device'])
+    loss_global_gdtts = torch.tensor(0., device=session['device'])
 
-    if ex['losses']['globals']['weight'] > 0:
-        loss_global = F.mse_loss(
-            results.global_features.squeeze(), targets.global_features.squeeze(), reduction='mean')
-    else:
-        loss_global = 0
+    if ex['losses']['local_lddt']['weight'] > 0:
+        node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
+        assert torch.isfinite(targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT]).all().item()
+        loss_local_lddt = F.mse_loss(
+            results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
+            targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
+        )
+        if ex['losses']['local_lddt']['balanced']:
+            loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
+        loss_local_lddt = loss_local_lddt.mean()
+
+    if ex['losses']['global_lddt']['weight'] > 0:
+        loss_global_lddt = F.mse_loss(
+            results.global_features[:, features.Output.Global.GLOBAL_LDDT],
+            targets.global_features[:, features.Output.Global.GLOBAL_LDDT], reduction='none'
+        )
+        if ex['losses']['global_lddt']['balanced']:
+            loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
+        loss_global_lddt = loss_global_lddt.mean()
+
+    if ex['losses']['global_gdtts']['weight'] > 0:
+        loss_global_gdtts = F.mse_loss(
+            results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
+            targets.global_features[:, features.Output.Global.GLOBAL_GDTTS], reduction='none'
+        )
+        if ex['losses']['global_gdtts']['balanced']:
+            loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
+        loss_global_gdtts = loss_global_gdtts.mean()
+
+    assert torch.isfinite(loss_local_lddt).item()
+    assert torch.isfinite(loss_global_lddt).item()
+    assert torch.isfinite(loss_global_gdtts).item()
 
     loss_total = (
-        ex['losses']['nodes']['weight'] * loss_nodes +
-        ex['losses']['globals']['weight'] * loss_global
+        ex['losses']['local_lddt']['weight'] * loss_local_lddt +
+        ex['losses']['global_lddt']['weight'] * loss_global_lddt +
+        ex['losses']['global_gdtts']['weight'] * loss_global_gdtts
     )
 
     optimizer.zero_grad()
@@ -270,8 +294,9 @@ def training_function(trainer, batch):
         'results': results,
         'loss': {
             'total': loss_total.item(),
-            'local': loss_nodes.item(),
-            'global': loss_global.item(),
+            'local_lddt': loss_local_lddt.item(),
+            'global_lddt': loss_global_lddt.item(),
+            'global_gdtts': loss_global_gdtts.item(),
         },
     }
 
@@ -282,25 +307,42 @@ def validation_function(validator, batch):
     targets = targets.to(session['device'])
     results = model(graphs)
 
-    if ex['losses']['nodes']['weight'] > 0:
-        node_mask = torch.isfinite(targets.node_features[:, 0])
-        node_weights = targets.node_features[node_mask, 2] if ex['losses']['nodes']['use_local_weights'] else 1.
-        loss_nodes = (
-                node_weights *
-                F.mse_loss(results.node_features[node_mask, 0], targets.node_features[node_mask, 0], reduction='none')
-        ).mean()
-    else:
-        loss_nodes = 0
+    loss_local_lddt = torch.tensor(0.)
+    loss_global_lddt = torch.tensor(0.)
+    loss_global_gdtts = torch.tensor(0.)
 
-    if ex['losses']['globals']['weight'] > 0:
-        loss_global = F.mse_loss(
-            results.global_features.squeeze(), targets.global_features.squeeze(), reduction='mean')
-    else:
-        loss_global = 0
+    if ex['losses']['local_lddt']['weight'] > 0:
+        node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
+        loss_local_lddt = F.mse_loss(
+            results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
+            targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
+        )
+        if ex['losses']['local_lddt']['balanced']:
+            loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
+        loss_local_lddt = loss_local_lddt.mean()
+
+    if ex['losses']['global_lddt']['weight'] > 0:
+        loss_global_lddt = F.mse_loss(
+            results.global_features[:, features.Output.Global.GLOBAL_LDDT],
+            targets.global_features[:, features.Output.Global.GLOBAL_LDDT], reduction='none'
+        )
+        if ex['losses']['global_lddt']['balanced']:
+            loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
+        loss_global_lddt = loss_global_lddt.mean()
+
+    if ex['losses']['global_gdtts']['weight'] > 0:
+        loss_global_gdtts = F.mse_loss(
+            results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
+            targets.global_features[:, features.Output.Global.GLOBAL_GDTTS], reduction='none'
+        )
+        if ex['losses']['global_gdtts']['balanced']:
+            loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
+        loss_global_gdtts = loss_global_gdtts.mean()
 
     loss_total = (
-            ex['losses']['nodes']['weight'] * loss_nodes +
-            ex['losses']['globals']['weight'] * loss_global
+        ex['losses']['local_lddt']['weight'] * loss_local_lddt +
+        ex['losses']['global_lddt']['weight'] * loss_global_lddt +
+        ex['losses']['global_gdtts']['weight'] * loss_global_gdtts
     )
 
     return {
@@ -311,8 +353,9 @@ def validation_function(validator, batch):
         'results': results,
         'loss': {
             'total': loss_total.item(),
-            'local': loss_nodes.item(),
-            'global': loss_global.item(),
+            'local_lddt': loss_local_lddt.item(),
+            'global_lddt': loss_global_lddt.item(),
+            'global_gdtts': loss_global_gdtts.item(),
         },
     }
 
@@ -349,7 +392,8 @@ def save_model(trainer, model, ex, optimizer, session):
         saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
 
 
-losses_avg = ProteinAverageLosses(lambda o: (o['loss']['local'], o['loss']['global'], o['num_samples']))
+losses_avg = ProteinAverageLosses(
+    lambda o: (o['loss']['local_lddt'], o['loss']['global_lddt'], o['loss']['global_gdtts'], o['num_samples']))
 losses_avg.attach(trainer)
 losses_avg.attach(validator)
 
@@ -364,7 +408,7 @@ gpu_max_memory_allocated.attach(validator, 'misc/gpu')
 # During training and validation, the progress bar shows the average loss over all batches processed so far
 pbar_train = ProgressBar(desc='Train')
 pbar_train.attach(trainer, metric_names=losses_avg.losses_names)
-pbar_val = ProgressBar(desc='Valid')
+pbar_val = ProgressBar(desc='Val')
 pbar_val.attach(validator, metric_names=losses_avg.losses_names)
 
 

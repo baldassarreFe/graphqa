@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import torch.utils.data
-
 import torchgraphs as tg
+
+from . import features
 
 MAX_DISTANCE = 12
 
@@ -27,44 +27,28 @@ class ProteinFolder(torch.utils.data.Dataset):
         self.cutoff = cutoff
         self.samples = sorted(f for f in folder.glob('sample*.pt'))
 
-        frequencies_local = pd.read_pickle(folder / 'frequencies_local.pkl')
-        self.local_weights = frequencies_local.max() / frequencies_local
-
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, item):
-        protein_name, provider, graph_in, graph_target = torch.load(self.samples[item])
+        path = self.samples[item]
+        protein, provider, graph_in, graph_target = torch.load(path)  # type: (str, str, tg.Graph, tg.Graph)
 
         # Remove edges between non-adjacent residues with distance greater than cutoff
-        distances, edge_type = graph_in.edge_features.unbind(dim=1)
+        edge_type = graph_in.edge_features[:, features.Input.Edge.EDGE_TYPE]
+        distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
         to_keep = (edge_type == 1.) | (distances < self.cutoff)
-        edge_features = graph_in.edge_features[to_keep]
-        edge_features[:, 0] = (- edge_features[:, 0].pow(2) / (2 * self.cutoff)).exp()
+
+        # Distances are encoded using a 0-centered RBF with variance proportional to the cutoff
+        distances_rbf = torch.exp(- distances ** 2 / (2 * self.cutoff))
 
         graph_in = graph_in.evolve(
             senders=graph_in.senders[to_keep],
             receivers=graph_in.receivers[to_keep],
-            edge_features=edge_features,
+            edge_features=torch.stack([edge_type[to_keep], distances_rbf[to_keep]], dim=1),
         )
 
-        # Compute weights for the local scores proportionally to the inverse of the frequency of
-        # that score in the dataset (NaN scores have NaN weight)
-        # The first column of node_features is the score, the last column is the weight.
-        scores = graph_target.node_features[:, 0]
-        valid_scores_idx = torch.isfinite(scores)
-        valid_weights = self.local_weights.loc[scores[valid_scores_idx]]
-        weights = torch.full_like(scores, float('nan'))
-        weights[valid_scores_idx] = weights.new_tensor(valid_weights.values)
-
-        graph_target = graph_target.evolve(
-            node_features=torch.cat([
-                graph_target.node_features,
-                weights[:, None]
-            ], dim=1)
-        )
-
-        return protein_name, provider, graph_in, graph_target
+        return protein, provider, graph_in, graph_target
 
 
 def process_file(filepath, destpath):
@@ -75,42 +59,66 @@ def process_file(filepath, destpath):
     destpath = Path(destpath).expanduser().resolve()
     destpath.mkdir(parents=True, exist_ok=True)
 
-    all_local_scores = []
-    all_global_scores = []
+    local_lddt_scores = []
+    global_lddt_scores = []
+    global_gdtts_scores = []
 
-    bar = tqdm.tqdm(desc='Preprocessing', unit=' model')
-    with tables.open_file(filepath) as h5_file:
-        proteins = (
-            p for p in h5_file.list_nodes('/')
-            if not (p._v_pathname.startswith('/casp') or p._v_pathname.startswith('/cameo'))
-        )
-        for i, protein in enumerate(proteins):
-            bar.set_postfix_str(f'Protein {protein._v_pathname[1:]}')
-            all_global_scores += np.array(protein.lddt_global).tolist()
-            all_local_scores += np.array(protein.lddt).ravel().tolist()
+    # First pass: enumerate proteins, count models, prepare frequency stats
+    proteins = []
+    total_models = 0
+    h5_file = tables.open_file(filepath)
+    for protein in h5_file.list_nodes('/'):
+        # I'm not sure why the file contains these nodes, but they are not proteins for sure
+        if protein._v_pathname.startswith(('/casp', '/cameo')):
+            continue
 
-            num_models = len(protein.names)
-            for j in range(num_models):
-                sample = process_protein(protein, j)
-                torch.save(sample, destpath / f'sample_{i}_{j}.pt')
-                bar.update()
-    bar.close()
+        local_lddt_scores.append(np.array(protein.lddt).ravel())
+        global_lddt_scores.append(np.array(protein.lddt_global))
+        # TODO change to the line below once we have the scores
+        global_gdtts_scores.append(np.array(protein.lddt_global))
+        # global_gdtts_scores.append(np.array(protein.gdtts_global))
 
-    all_local_scores = pd.Series(all_local_scores, name='local_scores').dropna()
-    all_global_scores = pd.Series(all_global_scores, name='global_scores').dropna()
+        total_models += len(protein.names)
+        proteins.append(protein)
 
-    frequencies_local = pd.cut(all_local_scores, bins=np.linspace(0, 1, num=20 + 1), include_lowest=True) \
-        .value_counts() \
-        .sort_index()
-    frequencies_global = pd.cut(all_global_scores, bins=np.linspace(0, 1, num=20 + 1), include_lowest=True) \
-        .value_counts() \
-        .sort_index()
+    local_lddt_scores = pd.Series(np.concatenate(local_lddt_scores), name='local_lddt').dropna()
+    global_lddt_scores = pd.Series(np.concatenate(global_lddt_scores), name='global_lddt').dropna()
+    global_gdtts_scores = pd.Series(np.concatenate(global_gdtts_scores), name='global_gdtts').dropna()
+    
+    def make_frequency(series):
+        """Quantize the values in a series into 20 equally spaced bins and compute frequency counts"""
+        return pd.cut(series, bins=np.linspace(0, 1, num=20 + 1), include_lowest=True).value_counts().sort_index()
 
-    frequencies_local.to_pickle(destpath / 'frequencies_local.pkl')
-    frequencies_global.to_pickle(destpath / 'frequencies_global.pkl')
+    # Compute weights for the local scores proportionally to the inverse of the frequency of
+    # that score in the dataset, set minimum frequency to 1 to avoid +inf weights
+    local_lddt_frequencies = make_frequency(local_lddt_scores)
+    local_lddt_frequencies.to_pickle(destpath / 'local_lddt_frequencies.pkl')
+    local_lddt_weights = local_lddt_frequencies.max() / local_lddt_frequencies.clip(lower=1)
+
+    global_lddt_frequencies = make_frequency(global_lddt_scores)
+    global_lddt_frequencies.to_pickle(destpath / 'global_lddt_frequencies.pkl')
+    global_lddt_weights = global_lddt_frequencies.max() / global_lddt_frequencies.clip(lower=1)
+
+    global_gdtts_frequencies = make_frequency(global_gdtts_scores)
+    global_gdtts_frequencies.to_pickle(destpath / 'global_gdtts_frequencies.pkl')
+    global_gdtts_weights = global_gdtts_frequencies.max() / global_gdtts_frequencies.clip(lower=1)
+
+    # Second pass: save every model as a pytorch object
+    protein_bar = tqdm.tqdm(proteins, desc='Proteins', unit=' proteins', leave=True)
+    models_bar = tqdm.tqdm(total=total_models, desc='Models  ', unit=' models', leave=True)
+    for i, protein in enumerate(protein_bar):
+        for j in range(len(protein.names)):
+            sample = protein_model_to_graph(protein, j, local_lddt_weights, global_lddt_weights, global_gdtts_weights)
+            torch.save(sample, destpath / f'sample_{i}_{j}.pt')
+            models_bar.update()
+    protein_bar.close()
+    models_bar.close()
+
+    h5_file.close()
 
 
-def process_protein(protein, model_idx):
+def protein_model_to_graph(protein, model_idx,
+                           local_lddt_weights_table, global_lddt_weights_table, global_gdtts_weights_table):
     # Name of this protein
     protein_name = protein._v_pathname[1:]
 
@@ -130,15 +138,32 @@ def process_protein(protein, model_idx):
     native_determined = protein.valid_dssp[0]              # Which residues are determined in the native structure
     dssp_features = protein.dssp[model_idx]                # DSSP features for the secondary structure
 
-    # For every residue a score is determined by comparison with the native structure.
-    # The global score is an average of the local scores.
+    # For every residue, a score is determined by comparison with the native structure (using LDDT)
     # It is not possible to assign a score to a residue if:
     # - the native model of the protein determined experimentally has failed to
     #   _observe_ the secondary structure of that residue
     # - the current model of the protein has failed to _determine_ the secondary structure of that residue
-    scores = protein.lddt[model_idx]               # Quality scores of the residues
-    global_score = protein.lddt_global[model_idx]  # Quality score of the whole model
-    # valid_scores = protein.valid[model_idx]      # Whether the local score is valid or not
+    # Frequency weights are looked up in the corresponding weights table (NaN scores get NaN weight)
+    local_lddt = protein.lddt[model_idx]         # Quality scores of the residues
+    local_lddt_valid = protein.valid[model_idx]  # Whether the local score is valid or not
+    local_lddt[~local_lddt_valid] = np.nan       # For native structure the score is set to 1. for all residues,
+                                                 # including non determined ones, we fix it by removing those scores.
+    local_lddt_weights = np.full_like(local_lddt, fill_value=float('nan'))  # Frequency weights
+    local_lddt_weights[local_lddt_valid] = local_lddt_weights_table.loc[local_lddt[local_lddt_valid]].values
+
+    # The global LDDT score is an average of the local LDDT scores:
+    # - residues missing from the model get a score of 0
+    # - residues missing from the native structure are ignored in the average
+    # Frequency weight us looked up in the corresponding weights table
+    global_lddt = protein.lddt_global[model_idx]                      # Quality score of the whole model
+    global_lddt_weight = global_lddt_weights_table.loc[global_lddt]  # Frequency weight
+
+    # The global GDT_TS score is another way of scoring the quality of a model.
+    # Frequency weight is looked up in the corresponding weights table
+    # TODO uncomment below once GDT_TS is in the h5 file
+    # global_gdtts = protein.gdtts_global[model_idx]                       # Quality score of the whole model
+    global_gdtts = np.random.rand()
+    global_gdtts_weight = global_gdtts_weights_table.loc[global_gdtts]  # Frequency weight
 
     senders, receivers, edge_features = make_edges(coordinates)
 
@@ -159,10 +184,16 @@ def process_protein(protein, model_idx):
     graph_target = tg.Graph(
         num_nodes=sequence_length,
         node_features=torch.from_numpy(np.stack([
-           scores,
-           native_determined
+            local_lddt,
+            local_lddt_weights,
+            native_determined,
         ], axis=1)).float(),
-        global_features=torch.tensor([global_score]).float()
+        global_features=torch.tensor([
+            global_lddt,
+            global_gdtts,
+            global_lddt_weight,
+            global_gdtts_weight,
+        ]).float()
     ).validate()
 
     return protein_name, provider, graph_in, graph_target
@@ -196,7 +227,7 @@ def make_edges(coords):
     distances = distances[to_keep]
     edge_type = edge_type[to_keep]
 
-    edge_features = np.vstack((distances, edge_type)).transpose()
+    edge_features = np.vstack((edge_type, distances)).transpose()
 
     return senders, receivers, edge_features
 
@@ -204,7 +235,6 @@ def make_edges(coords):
 def describe(filepath):
     import tables
     import tqdm
-    import numpy as np
     import scipy.spatial
     from proteins.utils import RunningStats
 
@@ -213,7 +243,7 @@ def describe(filepath):
     all_distances = RunningStats()
     all_neighbor_distances = RunningStats()
     for protein in tqdm.tqdm(h5_file.list_nodes('/')):
-        for model_idx in tqdm.trange(len(protein.names)):
+        for model_idx in tqdm.trange(len(protein.names), desc='Proteins', unit=' proteins'):
             # which residues are actually present in this model
             residue_mask = protein.valid_dssp[model_idx]
             # coordinates of the β carbon (or α if β is not present)
@@ -225,6 +255,8 @@ def describe(filepath):
             all_neighbor_distances.add_from(neighbor_distances)
     print(all_distances)
     print(all_neighbor_distances)
+
+    h5_file.close()
 
 
 def main():

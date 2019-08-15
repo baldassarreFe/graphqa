@@ -11,21 +11,29 @@ folder = (Path(args.folder) / 'layout').expanduser().resolve()
 with SummaryWriter(folder) as writer:
     writer.add_custom_scalars({
         'Losses': {
-            'Local': ['MultiLine', ['(train|val)/loss/local']],
-            'Global': ['MultiLine', ['(train|val)/loss/global']],
+            'Local LDDT': ['MultiLine', ['(train|val)/loss/local_lddt']],
+            'Global LDDT': ['MultiLine', ['(train|val)/loss/global_lddt']],
+            'Global GDT_TS': ['MultiLine', ['(train|val)/loss/global_gdtts']],
         },
-        'Metrics Local': {
-            'RMSE': ['MultiLine', ['(train|val)/metric/local/rmse']],
-            'Correlation': ['MultiLine', ['(train|val)/metric/local/correlation$']],
-            'Correlation per Model': ['MultiLine', ['(train|val)/metric/local/correlation_per_model']],
-            'R2': ['MultiLine', ['(train|val)/metric/local/r2']],
+        'Metrics Local LDDT': {
+            'RMSE': ['MultiLine', ['(train|val)/metric/local_lddt/rmse']],
+            'Correlation': ['MultiLine', ['(train|val)/metric/local_lddt/correlation$']],
+            'Correlation per Model': ['MultiLine', ['(train|val)/metric/local_lddt/correlation_per_model']],
+            'R2': ['MultiLine', ['(train|val)/metric/local_lddt/r2']],
         },
-        'Metrics Global': {
-            'RMSE': ['MultiLine', ['(train|val)/metric/global/rmse']],
-            'Correlation': ['MultiLine', ['(train|val)/metric/global/correlation$']],
-            'Correlation per Target': ['MultiLine', ['(train|val)/metric/global/correlation_per_target']],
-            'R2': ['MultiLine', ['(train|val)/metric/global/r2']],
-        }
+        'Metrics Global LDDT': {
+            'RMSE': ['MultiLine', ['(train|val)/metric/global_lddt/rmse']],
+            'Correlation': ['MultiLine', ['(train|val)/metric/global_lddt/correlation$']],
+            'Correlation per Target': ['MultiLine', ['(train|val)/metric/global_lddt/correlation_per_target']],
+            'R2': ['MultiLine', ['(train|val)/metric/global_lddt/r2']],
+        },
+        'Metrics Global GDT_TS': {
+            'RMSE': ['MultiLine', ['(train|val)/metric/global_gdtts/rmse']],
+            'Correlation': ['MultiLine', ['(train|val)/metric/global_gdtts/correlation$']],
+            'Correlation per Target': ['MultiLine', ['(train|val)/metric/global_gdtts/correlation_per_target']],
+            'R2': ['MultiLine', ['(train|val)/metric/global_gdtts/r2']],
+        },
+        
     })
 
 print('Layout saved to', folder)
