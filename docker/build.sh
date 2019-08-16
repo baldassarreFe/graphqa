@@ -2,6 +2,6 @@
 
 cp ../conda.yaml conda.yaml
 
-docker build -t proteins:v0 .
+docker build -t baldassarrefe/proteins:v0 .
 
 rm conda.yaml

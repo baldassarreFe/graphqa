@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
 
 RUN apt-get update && \
     apt-get install -y git curl wget tree htop zsh python3-pip screen && \
@@ -44,9 +44,5 @@ COPY conda.yaml /conda.yaml
 RUN source /root/.zshrc && \
     conda env update -n base --file /conda.yaml && \
     conda clean --quiet --yes --all
-
-RUN source /root/.zshrc && \
-    conda activate base && \
-    pip --no-cache-dir install git+https://github.com/baldassarreFe/torchgraphs@0c33a3b
 
 CMD zsh

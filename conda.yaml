@@ -125,5 +125,7 @@ dependencies:
     - namesgenerator==0.3
     - protobuf==3.9.1
     - tensorboard==1.14.0
+    - git+https://github.com/baldassarrefe/torchgraphs@c1c538258eb209ea83f2ef2c869b228088f3bc85
+    - git+https://github.com/lanpa/tensorboardX@366bc8ff960a1d674feb8a844da187222103251e
     - torch-scatter==1.3.1
     - werkzeug==0.15.5

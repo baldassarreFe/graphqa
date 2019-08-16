@@ -13,5 +13,5 @@ docker run --runtime=nvidia --ipc=host --rm -it \
     --mount "type=bind,source=${RUNS_PATH},target=/proteins/runs" \
     --mount="type=bind,source=${ENTRYPOINT_PATH},target=/entrypoint.sh" \
     --entrypoint=/entrypoint.sh \
-    proteins:v0 \
+    baldassarrefe/proteins:v0 \
     "$@"
