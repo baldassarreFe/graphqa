@@ -7,9 +7,10 @@ python -m proteins.dataset preprocess --filepath data/validation_casp11.v4.h5 --
 python -m proteins.dataset preprocess --filepath data/testing_cameo.v4.h5 --destpath data/testing
 ```
 
-## Tensorboard Layout
+## Tensorboard plugins: Custom Scalars Layout and Hyper Parameters
 ```bash
 python -m proteins.layout ./runs
+python -m proteins.experiment ./runs
 ```
 
 ## Training

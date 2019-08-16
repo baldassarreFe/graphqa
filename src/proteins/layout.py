@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('folder', help='The log folder to place the layout in')

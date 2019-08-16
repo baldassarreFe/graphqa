@@ -31,6 +31,7 @@ from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
 from .dataset import ProteinFolder
 from .metrics import ProteinMetrics, ProteinAverageLosses
 from .base_metrics import GpuMaxMemoryAllocated
+from .my_hparams import make_experiment_summary, make_session_start_summary, make_session_end_summary
 
 # region Arguments parsing
 ex = parse_args(config={
@@ -41,7 +42,7 @@ ex = parse_args(config={
     'data': {},
     'model': {},
     'optimizer': {},
-    'losses': {
+    'loss': {
         'local_lddt': {},
         'global_lddt': {},
         'global_gdtts': {},
@@ -96,7 +97,7 @@ if ex['model']['fn'] is None:
 if ex['optimizer']['fn'] is None:
     raise ValueError('Optimizer constructor function not defined')
 validate_history(ex['history'])
-validate_losses(ex['losses'])
+validate_losses(ex['loss'])
 
 ex['completed_epochs'] = sum((session['completed_epochs'] for session in ex['history']), 0)
 ex['samples'] = sum((session['samples'] for session in ex['history']), 0)
@@ -124,7 +125,7 @@ ex['history'].append(session)
 
 # Print config so far
 sort_dict(ex, ['name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model',
-               'optimizer', 'losses', 'metrics', 'history'])
+               'optimizer', 'loss', 'metrics', 'history'])
 sort_dict(session, ['completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
                     'datetime_started', 'datetime_completed', 'log', 'checkpoint', 'metrics', 'git', 'gpus'])
 
@@ -190,7 +191,7 @@ else:
         model.load_state_dict(torch.load(
             Path(ex['model']['state_dict']).expanduser(), map_location=session['device']))
 
-# Logger
+# Logger: log experiment configuration and model parameters
 logger = SummaryWriter(saver.base_folder)
 logger.add_text('Experiment',
                 textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
@@ -243,32 +244,32 @@ def training_function(trainer, batch):
     loss_global_lddt = torch.tensor(0., device=session['device'])
     loss_global_gdtts = torch.tensor(0., device=session['device'])
 
-    if ex['losses']['local_lddt']['weight'] > 0:
+    if ex['loss']['local_lddt']['weight'] > 0:
         node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
         assert torch.isfinite(targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT]).all().item()
         loss_local_lddt = F.mse_loss(
             results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
             targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
         )
-        if ex['losses']['local_lddt']['balanced']:
+        if ex['loss']['local_lddt']['balanced']:
             loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
         loss_local_lddt = loss_local_lddt.mean()
 
-    if ex['losses']['global_lddt']['weight'] > 0:
+    if ex['loss']['global_lddt']['weight'] > 0:
         loss_global_lddt = F.mse_loss(
             results.global_features[:, features.Output.Global.GLOBAL_LDDT],
             targets.global_features[:, features.Output.Global.GLOBAL_LDDT], reduction='none'
         )
-        if ex['losses']['global_lddt']['balanced']:
+        if ex['loss']['global_lddt']['balanced']:
             loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
         loss_global_lddt = loss_global_lddt.mean()
 
-    if ex['losses']['global_gdtts']['weight'] > 0:
+    if ex['loss']['global_gdtts']['weight'] > 0:
         loss_global_gdtts = F.mse_loss(
             results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
             targets.global_features[:, features.Output.Global.GLOBAL_GDTTS], reduction='none'
         )
-        if ex['losses']['global_gdtts']['balanced']:
+        if ex['loss']['global_gdtts']['balanced']:
             loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
         loss_global_gdtts = loss_global_gdtts.mean()
 
@@ -277,9 +278,9 @@ def training_function(trainer, batch):
     assert torch.isfinite(loss_global_gdtts).item()
 
     loss_total = (
-        ex['losses']['local_lddt']['weight'] * loss_local_lddt +
-        ex['losses']['global_lddt']['weight'] * loss_global_lddt +
-        ex['losses']['global_gdtts']['weight'] * loss_global_gdtts
+        ex['loss']['local_lddt']['weight'] * loss_local_lddt +
+        ex['loss']['global_lddt']['weight'] * loss_global_lddt +
+        ex['loss']['global_gdtts']['weight'] * loss_global_gdtts
     )
 
     optimizer.zero_grad()
@@ -311,38 +312,38 @@ def validation_function(validator, batch):
     loss_global_lddt = torch.tensor(0.)
     loss_global_gdtts = torch.tensor(0.)
 
-    if ex['losses']['local_lddt']['weight'] > 0:
+    if ex['loss']['local_lddt']['weight'] > 0:
         node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
         loss_local_lddt = F.mse_loss(
             results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
             targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
         )
-        if ex['losses']['local_lddt']['balanced']:
+        if ex['loss']['local_lddt']['balanced']:
             loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
         loss_local_lddt = loss_local_lddt.mean()
 
-    if ex['losses']['global_lddt']['weight'] > 0:
+    if ex['loss']['global_lddt']['weight'] > 0:
         loss_global_lddt = F.mse_loss(
             results.global_features[:, features.Output.Global.GLOBAL_LDDT],
             targets.global_features[:, features.Output.Global.GLOBAL_LDDT], reduction='none'
         )
-        if ex['losses']['global_lddt']['balanced']:
+        if ex['loss']['global_lddt']['balanced']:
             loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
         loss_global_lddt = loss_global_lddt.mean()
 
-    if ex['losses']['global_gdtts']['weight'] > 0:
+    if ex['loss']['global_gdtts']['weight'] > 0:
         loss_global_gdtts = F.mse_loss(
             results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
             targets.global_features[:, features.Output.Global.GLOBAL_GDTTS], reduction='none'
         )
-        if ex['losses']['global_gdtts']['balanced']:
+        if ex['loss']['global_gdtts']['balanced']:
             loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
         loss_global_gdtts = loss_global_gdtts.mean()
 
     loss_total = (
-        ex['losses']['local_lddt']['weight'] * loss_local_lddt +
-        ex['losses']['global_lddt']['weight'] * loss_global_lddt +
-        ex['losses']['global_gdtts']['weight'] * loss_global_gdtts
+        ex['loss']['local_lddt']['weight'] * loss_local_lddt +
+        ex['loss']['global_lddt']['weight'] * loss_global_lddt +
+        ex['loss']['global_gdtts']['weight'] * loss_global_gdtts
     )
 
     return {
@@ -368,6 +369,17 @@ validator = Engine(validation_function)
 def session_start(trainer, session):
     session['status'] = 'RUNNING'
     session['datetime_started'] = datetime.utcnow()
+
+    session_start_summary = make_session_start_summary(hparam_values={
+        'data/cutoff': ex['data']['cutoff'],
+        'optimizer/lr': ex['optimizer']['lr'],
+        'optimizer/weight_decay': ex['optimizer']['weight_decay'],
+        **{f'model/{k}': v for k, v in ex['model'].items()},
+        **{f'loss/local_lddt/{k}': v for k, v in ex['loss']['local_lddt'].items()},
+        **{f'loss/global_lddt/{k}': v for k, v in ex['loss']['global_lddt'].items()},
+        **{f'loss/global_gdtts/{k}': v for k, v in ex['loss']['global_gdtts'].items()},
+    })
+    logger.file_writer.add_summary(session_start_summary)
 
 
 @trainer.on(Events.EPOCH_STARTED)
@@ -505,6 +517,9 @@ def session_end(trainer, session):
     logger.add_text('Experiment',
                     textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
                     ex['samples'])
+
+    session_end_summary = make_session_end_summary('SUCCESS')
+    logger.file_writer.add_summary(session_end_summary)
 
 
 trainer.run(dataloader_train, max_epochs=session['max_epochs'])

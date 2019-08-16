@@ -1,0 +1,99 @@
+import argparse
+import time
+from pathlib import Path
+
+from tensorboardX import SummaryWriter
+
+from .config import flatten_dict
+from .my_hparams import make_experiment_summary
+
+parser = argparse.ArgumentParser()
+parser.add_argument('folder', help='The log folder to place the experiment configuration in')
+args = parser.parse_args()
+
+hparam_infos = {
+    'data': {
+        'cutoff': {'type': float}
+    },
+    'optimizer': {
+        'lr': {'type': float},
+        'weight_decay': {'type': float},
+    },
+    'model': {
+        'layers': {'type': int},
+        'hidden_size_in_edges': {'type': int},
+        'hidden_size_in_nodes': {'type': int},
+        'hidden_size_in_globals': {'type': int},
+        'hidden_size_out_edges': {'type': int},
+        'hidden_size_out_nodes': {'type': int},
+        'hidden_size_out_globals': {'type': int},
+        'dropout': {'type': float},
+        'batch_norm': {'type': bool},
+    },
+    'loss/local_lddt': {
+        'name': {'type': str},
+        'weight': {'type': float},
+        'balanced': {'type': bool},
+    },
+    'loss/global_lddt': {
+        'name': {'type': str},
+        'weight': {'type': float},
+        'balanced': {'type': bool},
+    },
+    'loss/global_gdtts': {
+        'name': {'type': str},
+        'weight': {'type': float},
+        'balanced': {'type': bool},
+    }
+}
+
+metric_infos = {
+    'local_lddt': {
+        'r2',
+        'rmse',
+        'correlation',
+        'correlation_per_model',
+    },
+    'global_lddt': {
+        'r2',
+        'rmse',
+        'correlation',
+        'correlation_per_target',
+        'first_rank_loss',
+    },
+    'global_gdtts': {
+        'r2',
+        'rmse',
+        'correlation',
+        'correlation_per_target',
+        'first_rank_loss',
+    }
+}
+
+hparam_infos = [
+    {'name': f'{category}/{hp_name}', **hp_info}
+    for category, hparams in hparam_infos.items()
+    for hp_name, hp_info in hparams.items()
+]
+
+metric_infos = [
+    {
+        'tag': f'val/metric/{score_type}/{n}',
+        'display_name': f'{score_type}/{n}',
+        'dataset_type': 'validation'
+    }
+    for score_type, names in metric_infos.items()
+    for n in names
+]
+
+experiment = {
+    'name': 'proteins',
+    'time_created_secs': int(time.time())
+}
+
+folder = (Path(args.folder) / 'experiment').expanduser().resolve()
+with SummaryWriter(folder) as writer:
+    experiment_summary = make_experiment_summary(hparam_infos, metric_infos, experiment)
+    writer.file_writer.add_summary(experiment_summary)
+
+print('Experiment summary saved to', folder)

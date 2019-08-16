@@ -8,7 +8,7 @@ optimizer:
   lr: .001
   weight_decay: 0
 
-losses:
+loss:
   local_lddt:
     name: mse
     weight: 1
