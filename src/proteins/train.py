@@ -427,13 +427,14 @@ pbar_val.attach(validator, metric_names=losses_avg.losses_names)
 def log_losses_batch(engine, tag):
     """Log the losses for the current batch, to be called at every iteration"""
     for name, value in engine.state.output['loss'].items():
-        logger.add_scalar(f'{tag}/loss/{name}', engine.state.output['loss'][name], global_step=session['samples'])
+        if name == 'total' or ex['loss'][name]['weight'] > 0:
+            logger.add_scalar(f'{tag}/loss/{name}', engine.state.output['loss'][name], global_step=session['samples'])
 
 
 def log_losses_avg(engine, tag):
     """Log the avg of the losses for the current epoch, to be called at the end of an epoch"""
     for name, value in engine.state.metrics.items():
-        if name.startswith('loss/'):
+        if name.startswith('loss/') and ex['loss'][name[5:]]['weight'] > 0:
             logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
 
 
