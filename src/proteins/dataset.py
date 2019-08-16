@@ -74,9 +74,7 @@ def process_file(filepath, destpath):
 
         local_lddt_scores.append(np.array(protein.lddt).ravel())
         global_lddt_scores.append(np.array(protein.lddt_global))
-        # TODO change to the line below once we have the scores
-        global_gdtts_scores.append(np.array(protein.lddt_global))
-        # global_gdtts_scores.append(np.array(protein.gdtts_global))
+        global_gdtts_scores.append(np.array(protein.gdtts_global))
 
         total_models += len(protein.names)
         proteins.append(protein)
@@ -139,11 +137,10 @@ def protein_model_to_graph(protein, model_idx,
     dssp_features = protein.dssp[model_idx]                # DSSP features for the secondary structure
 
     # For every residue, a score is determined by comparison with the native structure (using LDDT)
-    # It is not possible to assign a score to a residue if:
-    # - the native model of the protein determined experimentally has failed to
-    #   _observe_ the secondary structure of that residue
-    # - the current model of the protein has failed to _determine_ the secondary structure of that residue
-    # Frequency weights are looked up in the corresponding weights table (NaN scores get NaN weight)
+    # For some models, it is not possible to assign a score to a residue if:
+    # - the experiment to determine the native model has failed to  _observe_ the secondary structure of that residue
+    # - the algorithm to determine this model has failed to _determine_ the secondary structure of that residue
+    # Frequency weights are looked up in the corresponding weights table (NaN scores get NaN weight).
     local_lddt = protein.lddt[model_idx]         # Quality scores of the residues
     local_lddt_valid = protein.valid[model_idx]  # Whether the local score is valid or not
     local_lddt[~local_lddt_valid] = np.nan       # For native structure the score is set to 1. for all residues,
@@ -154,15 +151,18 @@ def protein_model_to_graph(protein, model_idx,
     # The global LDDT score is an average of the local LDDT scores:
     # - residues missing from the model get a score of 0
     # - residues missing from the native structure are ignored in the average
-    # Frequency weight us looked up in the corresponding weights table
+    # Frequency weight us looked up in the corresponding weights table.
     global_lddt = protein.lddt_global[model_idx]                      # Quality score of the whole model
     global_lddt_weight = global_lddt_weights_table.loc[global_lddt]  # Frequency weight
 
     # The global GDT_TS score is another way of scoring the quality of a model.
-    # Frequency weight is looked up in the corresponding weights table
-    # TODO uncomment below once GDT_TS is in the h5 file
-    # global_gdtts = protein.gdtts_global[model_idx]                       # Quality score of the whole model
-    global_gdtts = np.random.rand()
+    # Until we get GDT_TS in the dataset we use an average of the local S-score as a proxy for GDT_TS.
+    # This is ok because GDT_TS and S-scores have a Pearson correlation of 1.
+    # Since the S-score of missing residues is NaN, we consider those scores as 0s when taking the mean,
+    # otherwise one could ignore them in the mean.
+    # Frequency weight is looked up in the corresponding weights table.
+    local_sscore = protein.s_scores[model_idx]
+    global_gdtts = np.nan_to_num(local_sscore).mean()                   # Quality score of the whole model
     global_gdtts_weight = global_gdtts_weights_table.loc[global_gdtts]  # Frequency weight
 
     senders, receivers, edge_features = make_edges(coordinates)
