@@ -107,9 +107,13 @@ class ProteinGN(nn.Module):
         self.readout = nn.Sequential(OrderedDict({
             'node': tg.NodeLinear(features.Output.Node.LENGTH, node_features=mp_out_nodes),
             'node_sigmoid': tg.NodeSigmoid(),
-            'global': tg.GlobalLinear(features.Output.Global.LENGTH,
-                                      global_features=mp_out_globals, node_features=1, aggregation='mean'),
+
+            # Use this to force global to depend on previous global features
+            'global': tg.GlobalLinear(features.Output.Global.LENGTH, global_features=mp_out_globals),
             'global_sigmoid': tg.GlobalSigmoid()
+
+            # Use this if we want global = w * mean(nodes) + b
+            # 'global': tg.GlobalLinear(features.Output.Global.LENGTH, node_features=1, aggregation='mean'),
         }))
 
     def forward(self, graphs):
