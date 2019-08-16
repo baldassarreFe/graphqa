@@ -47,7 +47,7 @@ ex = parse_args(config={
         'global_lddt': {},
         'global_gdtts': {},
     },
-    'metrics': {},
+    'metric': {},
     'history': [],
 
     # Session defaults
@@ -113,7 +113,7 @@ session['datetime_started'] = None
 session['datetime_completed'] = None
 session['git'] = git_info()
 session['cuda'] = cuda_info() if 'cuda' in session['device'] else None
-session['metrics'] = {}
+session['metric'] = {}
 session['checkpoint'] = session['checkpoint']
 
 if session['cpus'] < 0:
@@ -125,9 +125,9 @@ ex['history'].append(session)
 
 # Print config so far
 sort_dict(ex, ['name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model',
-               'optimizer', 'loss', 'metrics', 'history'])
+               'optimizer', 'loss', 'metric', 'history'])
 sort_dict(session, ['completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
-                    'datetime_started', 'datetime_completed', 'log', 'checkpoint', 'metrics', 'git', 'gpus'])
+                    'datetime_started', 'datetime_completed', 'log', 'checkpoint', 'metric', 'git', 'gpus'])
 
 pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # endregion
@@ -469,7 +469,6 @@ trainer.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, sessio
 trainer.add_event_handler(Events.ITERATION_COMPLETED, log_losses_batch, 'train')
 
 trainer.add_event_handler(Events.EPOCH_COMPLETED, update_completed_epochs, ex, session)
-trainer.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'train')
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'train')
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'train')
@@ -485,7 +484,7 @@ def setup_validation(validator):
 
 def update_metrics(validator, ex, session):
     metrics = build_dict((k.split('/'), v) for k, v in validator.state.metrics.items() if k.startswith('metric/'))
-    ex['metrics'] = session['metrics'] = metrics
+    ex['metric'] = session['metric'] = metrics['metric']
 
 
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
@@ -494,6 +493,7 @@ validator.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
 validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, ex, session)
+validator.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
 
 
 @trainer.on(Events.COMPLETED, session)
@@ -513,7 +513,7 @@ def session_end(trainer, session):
             })
         print(pyaml.dump(session['cuda']['devices'], safe=True, sort_dicts=False), sep='\n')
 
-    print(pyaml.dump(session['metrics']))
+    print(pyaml.dump(session['metric']))
 
     logger.add_text('Experiment',
                     textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
