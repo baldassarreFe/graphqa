@@ -13,58 +13,57 @@ class ProteinGN(nn.Module):
     def __init__(
             self,
             layers=1,
-            hidden_size_in_edges=8,
-            hidden_size_in_nodes=16,
-            hidden_size_in_globals=4,
-            hidden_size_out_edges=64,
-            hidden_size_out_nodes=128,
-            hidden_size_out_globals=32,
+            mp_in_edges=8,
+            mp_in_nodes=16,
+            mp_in_globals=4,
+            mp_out_edges=64,
+            mp_out_nodes=128,
+            mp_out_globals=32,
             dropout=0,
             batch_norm=False,
     ):
         super().__init__()
         self.layers = []
 
-        # Edge feature shape: 2 -> hidden_size_in_edges//2 -> hidden_size_in_edges
-        # Node feature shape: 83 -> hidden_size_in_nodes -> hidden_size_in_nodes//2
-        # Global feature shape: None -> hidden_size_in_globals
+        # Edge feature shape: 2 -> mp_in_edges//2 -> mp_in_edges
+        # Node feature shape: 83 -> mp_in_nodes -> mp_in_nodes//2
+        # Global feature shape: None -> mp_in_globals
         self.encoder = nn.Sequential(OrderedDict({
-            'edge1': tg.EdgeLinear(out_features=hidden_size_in_edges//2, edge_features=2),
+            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=2),
             'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'edge1_bn': tg.EdgeBatchNorm(num_features=hidden_size_in_edges//2) if batch_norm else nn.Identity(),
+            'edge1_bn': tg.EdgeBatchNorm(num_features=mp_in_edges//2) if batch_norm else nn.Identity(),
             'edge1_relu': tg.EdgeReLU(),
-            'edge2': tg.EdgeLinear(out_features=hidden_size_in_edges, edge_features=hidden_size_in_edges//2),
+            'edge2': tg.EdgeLinear(out_features=mp_in_edges, edge_features=mp_in_edges//2),
             'edge2_dropout': tg.EdgeDropout(p=dropout),
-            'edge2_bn': tg.EdgeBatchNorm(num_features=hidden_size_in_edges) if batch_norm else nn.Identity(),
+            'edge2_bn': tg.EdgeBatchNorm(num_features=mp_in_edges) if batch_norm else nn.Identity(),
             'edge2_relu': tg.EdgeReLU(),
 
-            'node1': tg.NodeLinear(out_features=hidden_size_in_nodes//2, node_features=83),
+            'node1': tg.NodeLinear(out_features=mp_in_nodes//2, node_features=83),
             'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'node1_bn': tg.NodeBatchNorm(num_features=hidden_size_in_nodes//2) if batch_norm else nn.Identity(),
+            'node1_bn': tg.NodeBatchNorm(num_features=mp_in_nodes//2) if batch_norm else nn.Identity(),
             'node1_relu': tg.NodeReLU(),
-            'node2': tg.NodeLinear(out_features=hidden_size_in_nodes, node_features=hidden_size_in_nodes//2),
+            'node2': tg.NodeLinear(out_features=mp_in_nodes, node_features=mp_in_nodes//2),
             'node2_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'node2_bn': tg.NodeBatchNorm(num_features=hidden_size_in_nodes) if batch_norm else nn.Identity(),
+            'node2_bn': tg.NodeBatchNorm(num_features=mp_in_nodes) if batch_norm else nn.Identity(),
             'node2_relu': tg.NodeReLU(),
 
-            'global': tg.GlobalLinear(out_features=hidden_size_in_globals, bias=True),
+            'global': tg.GlobalLinear(out_features=mp_in_globals, bias=True),
             'global_dropout': tg.GlobalDropout(p=dropout) if dropout > 0 else nn.Identity(),
             'global_relu': tg.GlobalReLU(),
         }))
 
-        # Edge, node and global shapes decrease from
-        # (hidden_size_in_edges, hidden_size_in_nodes, hidden_size_in_globals)
-        # to
-        # (hidden_size_out_edges, hidden_size_out_nodes, hidden_size_out_globals)
-        # following powers of 2 in the number of steps given as parameter (e.g. 10).
-        hidden_layers_output_sizes = np.power(2, np.linspace(
-            np.log2((hidden_size_in_edges, hidden_size_in_nodes, hidden_size_in_globals)),
-            np.log2((hidden_size_out_edges, hidden_size_out_nodes, hidden_size_out_globals)),
+        # Message passing layers: edge, node and global shapes go
+        # from (mp_in_edges , mp_in_nodes , mp_in_globals )
+        # to   (mp_out_edges, mp_out_nodes, mp_out_globals)
+        # following powers of 2 in the number of steps given with the `layers` parameter (e.g. 10).
+        mp_layers_output_sizes = np.power(2, np.linspace(
+            np.log2((mp_in_edges, mp_in_nodes, mp_in_globals)),
+            np.log2((mp_out_edges, mp_out_nodes, mp_out_globals)),
             num=layers, endpoint=False
-        ).round().astype(int)).tolist()[1:] + [(hidden_size_out_edges, hidden_size_out_nodes, hidden_size_out_globals)]
+        ).round().astype(int)).tolist()[1:] + [(mp_out_edges, mp_out_nodes, mp_out_globals)]
 
-        in_e, in_n, in_g = hidden_size_in_edges, hidden_size_in_nodes, hidden_size_in_globals
-        for out_e, out_n, out_g in hidden_layers_output_sizes:
+        in_e, in_n, in_g = mp_in_edges, mp_in_nodes, mp_in_globals
+        for out_e, out_n, out_g in mp_layers_output_sizes:
             layer = nn.Sequential(OrderedDict({
                 'edge1': tg.EdgeLinear(
                     out_features=out_e,
@@ -103,13 +102,13 @@ class ProteinGN(nn.Module):
 
         self.layers = torch.nn.Sequential(OrderedDict({f'layer_{i}': l for i, l in enumerate(self.layers)}))
 
-        # Node feature shape: hidden_size_out_nodes -> 1
-        # Global feature shape: hidden_size_out_globals -> 1
+        # Node feature shape: mp_out_nodes -> 1
+        # Global feature shape: mp_out_globals -> 1
         self.readout = nn.Sequential(OrderedDict({
-            'node': tg.NodeLinear(features.Output.Node.LENGTH, node_features=hidden_size_out_nodes),
+            'node': tg.NodeLinear(features.Output.Node.LENGTH, node_features=mp_out_nodes),
             'node_sigmoid': tg.NodeSigmoid(),
             'global': tg.GlobalLinear(features.Output.Global.LENGTH,
-                                      global_features=hidden_size_out_globals, node_features=1, aggregation='mean'),
+                                      global_features=mp_out_globals, node_features=1, aggregation='mean'),
             'global_sigmoid': tg.GlobalSigmoid()
         }))
 

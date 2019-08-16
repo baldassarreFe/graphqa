@@ -4,7 +4,6 @@ from pathlib import Path
 
 from tensorboardX import SummaryWriter
 
-from .config import flatten_dict
 from .my_hparams import make_experiment_summary
 
 parser = argparse.ArgumentParser()
@@ -21,12 +20,12 @@ hparam_infos = {
     },
     'model': {
         'layers': {'type': int},
-        'hidden_size_in_edges': {'type': int},
-        'hidden_size_in_nodes': {'type': int},
-        'hidden_size_in_globals': {'type': int},
-        'hidden_size_out_edges': {'type': int},
-        'hidden_size_out_nodes': {'type': int},
-        'hidden_size_out_globals': {'type': int},
+        'mp_in_edges': {'type': int},
+        'mp_in_nodes': {'type': int},
+        'mp_in_globals': {'type': int},
+        'mp_out_edges': {'type': int},
+        'mp_out_nodes': {'type': int},
+        'mp_out_globals': {'type': int},
         'dropout': {'type': float},
         'batch_norm': {'type': bool},
     },
