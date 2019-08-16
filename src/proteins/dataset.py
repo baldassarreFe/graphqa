@@ -74,7 +74,7 @@ def process_file(filepath, destpath):
 
         local_lddt_scores.append(np.array(protein.lddt).ravel())
         global_lddt_scores.append(np.array(protein.lddt_global))
-        global_gdtts_scores.append(np.array(protein.gdtts_global))
+        global_gdtts_scores.append(np.nanmean(protein.s_scores, axis=1))
 
         total_models += len(protein.names)
         proteins.append(protein)
@@ -158,11 +158,10 @@ def protein_model_to_graph(protein, model_idx,
     # The global GDT_TS score is another way of scoring the quality of a model.
     # Until we get GDT_TS in the dataset we use an average of the local S-score as a proxy for GDT_TS.
     # This is ok because GDT_TS and S-scores have a Pearson correlation of 1.
-    # Since the S-score of missing residues is NaN, we consider those scores as 0s when taking the mean,
-    # otherwise one could ignore them in the mean.
+    # Since the S-score of missing residues is NaN, we ignore those scores when taking the mean.
     # Frequency weight is looked up in the corresponding weights table.
     local_sscore = protein.s_scores[model_idx]
-    global_gdtts = np.nan_to_num(local_sscore).mean()                   # Quality score of the whole model
+    global_gdtts = np.nanmean(local_sscore)                             # Quality score of the whole model
     global_gdtts_weight = global_gdtts_weights_table.loc[global_gdtts]  # Frequency weight
 
     senders, receivers, edge_features = make_edges(coordinates)
