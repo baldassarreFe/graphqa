@@ -41,25 +41,33 @@ class RemoveEdges(object):
         :param cutoff: the maximum distance at which non-adjacent residues should be connected,
                        passing 0 will result in simple linear graph structure
         """
-        if cutoff > MAX_CUTOFF_DISTANCE:
+        if cutoff >= MAX_CUTOFF_DISTANCE:
             from warnings import warn
             warn(f'The chosen cutoff {cutoff} is larger than the maximum distance '
-                 f'saved in the dataset {MAX_CUTOFF_DISTANCE}')
+                 f'saved in the dataset {MAX_CUTOFF_DISTANCE}, this transformation will not remove any edge')
         self.cutoff = cutoff
 
     def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
         # Remove edges between non-adjacent residues with distance greater than cutoff
+        senders = graph_in.senders
+        receivers = graph_in.receivers
         edge_type = graph_in.edge_features[:, features.Input.Edge.EDGE_TYPE]
         distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
-        to_keep = (edge_type == 1.) | (distances < self.cutoff)
+
+        if self.cutoff < MAX_CUTOFF_DISTANCE:
+            to_keep = (edge_type == 1.) | (distances < self.cutoff)
+            senders = senders[to_keep],
+            receivers = receivers[to_keep]
+            edge_type = edge_type[to_keep]
+            distances = distances[to_keep]
 
         # Distances are encoded using a 0-centered RBF with variance proportional to the cutoff
         distances_rbf = torch.exp(- distances ** 2 / (2 * self.cutoff))
 
         graph_in = graph_in.evolve(
-            senders=graph_in.senders[to_keep],
-            receivers=graph_in.receivers[to_keep],
-            edge_features=torch.stack([edge_type[to_keep], distances_rbf[to_keep]], dim=1),
+            senders=senders,
+            receivers=receivers,
+            edge_features=torch.stack([edge_type, distances_rbf], dim=1),
         )
 
         return protein, provider, graph_in, graph_target
@@ -71,9 +79,13 @@ class PositionalEncoding(object):
         self.max_sequence_length = max_sequence_length
         self.base = base
 
-        self.encoding = self.make_encoding(encoding_size, max_sequence_length, base, device)
+        if self.encoding_size != 0 and base is not None:
+            self.encoding = self.make_encoding(encoding_size, max_sequence_length, base, device)
 
     def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        if self.encoding_size == 0:
+            return protein, provider, graph_in, graph_target
+
         graph_in = graph_in.evolve(node_features=torch.cat((
             graph_in.node_features,
             self.encoding[:graph_in.num_nodes, :]
