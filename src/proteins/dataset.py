@@ -56,7 +56,7 @@ class RemoveEdges(object):
 
         if self.cutoff < MAX_CUTOFF_DISTANCE:
             to_keep = (edge_type == 1.) | (distances < self.cutoff)
-            senders = senders[to_keep],
+            senders = senders[to_keep]
             receivers = receivers[to_keep]
             edge_type = edge_type[to_keep]
             distances = distances[to_keep]
@@ -113,7 +113,7 @@ class PositionalEncoding(object):
         )
         enc = torch.empty(len_sequence, encoding_size, device=device)
         enc[:, 0::2] = torch.sin(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 0::2] / encoding_size)))
-        enc[:, 1::2] = torch.cos(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 1::2] / encoding_size)))
+        enc[:, 1::2] = torch.cos(sequence_pos[:, 1::2] / (base ** (2 * encoding_idx[:, 1::2] / encoding_size)))
         return enc
 
 
