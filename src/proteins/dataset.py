@@ -7,25 +7,18 @@ import torchgraphs as tg
 
 from . import features
 
-MAX_DISTANCE = 12
+MAX_CUTOFF_DISTANCE = 12
 
 
 class ProteinFolder(torch.utils.data.Dataset):
-    def __init__(self, folder, cutoff, transforms=()):
-        """
-        Load `.pt` files from a folder
+    def __init__(self, folder, transforms=()):
+        """Load graph samples in `*.pt` format from a folder
         :param folder: the dataset folder
-        :param cutoff: the maximum distance at which non-adjacent residues should be connected,
-                       passing 0 will result in simple linear graph structure
         """
         folder = Path(folder).expanduser().resolve()
         if not folder.is_dir():
             raise ValueError(f'Not a directory: {folder}')
-        if cutoff > MAX_DISTANCE:
-            from warnings import warn
-            warn(f'The chosen cutoff {cutoff} is larger than the maximum distance saved in the dataset {MAX_DISTANCE}')
 
-        self.cutoff = cutoff
         self.transforms = transforms
         self.samples = sorted(f for f in folder.glob('sample*.pt'))
 
@@ -34,8 +27,27 @@ class ProteinFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, item):
         path = self.samples[item]
-        protein, provider, graph_in, graph_target = torch.load(path)  # type: (str, str, tg.Graph, tg.Graph)
+        sample = torch.load(path)  # type: (str, str, tg.Graph, tg.Graph)
 
+        for t in self.transforms:
+            sample = t(*sample)
+
+        return sample
+
+
+class RemoveEdges(object):
+    def __init__(self, cutoff: float):
+        """
+        :param cutoff: the maximum distance at which non-adjacent residues should be connected,
+                       passing 0 will result in simple linear graph structure
+        """
+        if cutoff > MAX_CUTOFF_DISTANCE:
+            from warnings import warn
+            warn(f'The chosen cutoff {cutoff} is larger than the maximum distance '
+                 f'saved in the dataset {MAX_CUTOFF_DISTANCE}')
+        self.cutoff = cutoff
+
+    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
         # Remove edges between non-adjacent residues with distance greater than cutoff
         edge_type = graph_in.edge_features[:, features.Input.Edge.EDGE_TYPE]
         distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
@@ -50,11 +62,7 @@ class ProteinFolder(torch.utils.data.Dataset):
             edge_features=torch.stack([edge_type[to_keep], distances_rbf[to_keep]], dim=1),
         )
 
-        sample = protein, provider, graph_in, graph_target
-        for t in self.transforms:
-            sample = t(*sample)
-
-        return sample
+        return protein, provider, graph_in, graph_target
 
 
 class PositionalEncoding(object):
@@ -73,12 +81,12 @@ class PositionalEncoding(object):
         return protein, provider, graph_in, graph_target
 
     @staticmethod
-    def make_encoding(dim_encoding: int, len_sequence: int, base: float = 10000,
+    def make_encoding(encoding_size: int, len_sequence: int, base: float = 10000,
                       device: Optional[Union[str, torch.device]] = 'cpu'):
         """Prepare a positional encoding of shape (len_sequence, dim_encoding)
 
         Args:
-            dim_encoding:
+            encoding_size:
             len_sequence:
             base:
             device:
@@ -89,11 +97,11 @@ class PositionalEncoding(object):
         # sequence_pos, encoding_idx have both shape (len_sequence, dim_encoding)
         sequence_pos, encoding_idx = torch.meshgrid(
             torch.arange(len_sequence, device=device, dtype=torch.float),
-            torch.arange(dim_encoding, device=device, dtype=torch.float)
+            torch.arange(encoding_size, device=device, dtype=torch.float)
         )
-        enc = torch.empty(len_sequence, dim_encoding, device=device)
-        enc[:, 0::2] = torch.sin(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 0::2] / dim_encoding)))
-        enc[:, 1::2] = torch.cos(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 1::2] / dim_encoding)))
+        enc = torch.empty(len_sequence, encoding_size, device=device)
+        enc[:, 0::2] = torch.sin(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 0::2] / encoding_size)))
+        enc[:, 1::2] = torch.cos(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 1::2] / encoding_size)))
         return enc
 
 
@@ -264,7 +272,7 @@ def make_edges(coords):
 
     # Distances greater that 12 Angstrom are considered irrelevant and removed unless between adjacent residues
     with np.errstate(invalid='ignore'):
-        is_relevant = distances < MAX_DISTANCE
+        is_relevant = distances < MAX_CUTOFF_DISTANCE
 
     to_keep = np.logical_or(is_relevant, idx_adjacent)
     senders = senders[to_keep]

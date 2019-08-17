@@ -23,15 +23,15 @@ from ignite.engine import Engine, Events
 from ignite.contrib.handlers import ProgressBar
 
 from . import features
-from .config import build_dict, flatten_dict
+from .config import build_dict
 from .utils import round_timedelta
 from .config import parse_args
 from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
-from .dataset import ProteinFolder
+from .dataset import ProteinFolder, PositionalEncoding, RemoveEdges
 from .metrics import ProteinMetrics, ProteinAverageLosses
 from .base_metrics import GpuMaxMemoryAllocated
-from .my_hparams import make_experiment_summary, make_session_start_summary, make_session_end_summary
+from .my_hparams import make_session_start_summary, make_session_end_summary
 
 # region Arguments parsing
 ex = parse_args(config={
@@ -144,19 +144,28 @@ if ex['completed_epochs'] == 0:
 
 # Model and optimizer
 def load_model(config: Mapping) -> torch.nn.Module:
-    special_keys = {'fn', 'state_dict'}
+    # Reserved because used internally to fetch the model function/class and possibly load the weights
+    reserved_keys = {'fn', 'state_dict'}
+    # These args are computed based on other stuff, the user should not provide a value
+    computed_keys = {'enc_in_nodes'}
 
     if 'fn' not in config:
         raise ValueError('Model function not specified')
 
     function = import_(config['fn'])
     function_args = inspect.signature(function).parameters.keys()
-    if not set.isdisjoint(special_keys, function_args):
-        raise ValueError(f'Model function can not have any of {special_keys} in its arguments, '
+    if not set.isdisjoint(reserved_keys, function_args):
+        raise ValueError(f'Model function can not have any of {reserved_keys} in its arguments, '
                          f'signature is {", ".join(function_args)}')
+    if not set.isdisjoint(set(config.keys()), computed_keys):
+        raise ValueError(f'Config dict can not have any of {computed_keys} in its arguments, '
+                         f'found {", ".join(set.intersection(set(config.keys()), computed_keys))}')
 
-    kwargs = {k: v for k, v in config.items() if k not in special_keys}
-    model = function(**kwargs)
+    kwargs = {k: v for k, v in config.items() if k not in reserved_keys}
+    model = function(
+        enc_in_nodes=features.Input.Node.LENGTH + ex['data']['encoding_size'],
+        **kwargs
+    )
 
     return model
 
@@ -207,8 +216,14 @@ if ex['samples'] == 0:
 def get_dataloaders(ex, session):
     data_folder = Path(os.environ.get('DATA_FOLDER', './data'))
 
-    dataset_train = ProteinFolder(data_folder / 'training', cutoff=ex['data']['cutoff'])
-    dataset_val = ProteinFolder(data_folder / 'validation', cutoff=ex['data']['cutoff'])
+    transforms = [
+        RemoveEdges(cutoff=ex['data']['cutoff']),
+        PositionalEncoding(
+            encoding_size=ex['data']['encoding_size'], max_sequence_length=900, base=ex['data']['encoding_base'])
+    ]
+
+    dataset_train = ProteinFolder(data_folder / 'training', transforms=transforms)
+    dataset_val = ProteinFolder(data_folder / 'validation', transforms=transforms)
 
     if 'QUICK_RUN' in os.environ:
         print('QUICK RUN: limiting the datasets to 5 batches')

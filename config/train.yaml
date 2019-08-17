@@ -2,6 +2,8 @@ name: proteins
 
 data:
   cutoff: 8
+  encoding_size: 50
+  encoding_base: 100
 
 optimizer:
   fn: torch.optim.Adam

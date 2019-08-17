@@ -12,6 +12,7 @@ from . import features
 class ProteinGN(nn.Module):
     def __init__(
             self,
+            enc_in_nodes=83,
             layers=1,
             mp_in_edges=8,
             mp_in_nodes=16,
@@ -38,7 +39,7 @@ class ProteinGN(nn.Module):
             'edge2_bn': tg.EdgeBatchNorm(num_features=mp_in_edges) if batch_norm else nn.Identity(),
             'edge2_relu': tg.EdgeReLU(),
 
-            'node1': tg.NodeLinear(out_features=mp_in_nodes//2, node_features=83),
+            'node1': tg.NodeLinear(out_features=mp_in_nodes//2, node_features=enc_in_nodes),
             'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
             'node1_bn': tg.NodeBatchNorm(num_features=mp_in_nodes//2) if batch_norm else nn.Identity(),
             'node1_relu': tg.NodeReLU(),
