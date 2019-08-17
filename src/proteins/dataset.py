@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 import torch.utils.data
@@ -10,7 +11,7 @@ MAX_DISTANCE = 12
 
 
 class ProteinFolder(torch.utils.data.Dataset):
-    def __init__(self, folder, cutoff):
+    def __init__(self, folder, cutoff, transforms=()):
         """
         Load `.pt` files from a folder
         :param folder: the dataset folder
@@ -25,6 +26,7 @@ class ProteinFolder(torch.utils.data.Dataset):
             warn(f'The chosen cutoff {cutoff} is larger than the maximum distance saved in the dataset {MAX_DISTANCE}')
 
         self.cutoff = cutoff
+        self.transforms = transforms
         self.samples = sorted(f for f in folder.glob('sample*.pt'))
 
     def __len__(self):
@@ -48,7 +50,51 @@ class ProteinFolder(torch.utils.data.Dataset):
             edge_features=torch.stack([edge_type[to_keep], distances_rbf[to_keep]], dim=1),
         )
 
+        sample = protein, provider, graph_in, graph_target
+        for t in self.transforms:
+            sample = t(*sample)
+
+        return sample
+
+
+class PositionalEncoding(object):
+    def __init__(self, encoding_size, max_sequence_length, base, device='cpu'):
+        self.encoding_size = encoding_size
+        self.max_sequence_length = max_sequence_length
+        self.base = base
+
+        self.encoding = self.make_encoding(encoding_size, max_sequence_length, base, device)
+
+    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        graph_in = graph_in.evolve(node_features=torch.cat((
+            graph_in.node_features,
+            self.encoding[:graph_in.num_nodes, :]
+        ), dim=1))
         return protein, provider, graph_in, graph_target
+
+    @staticmethod
+    def make_encoding(dim_encoding: int, len_sequence: int, base: float = 10000,
+                      device: Optional[Union[str, torch.device]] = 'cpu'):
+        """Prepare a positional encoding of shape (len_sequence, dim_encoding)
+
+        Args:
+            dim_encoding:
+            len_sequence:
+            base:
+            device:
+
+        Returns:
+
+        """
+        # sequence_pos, encoding_idx have both shape (len_sequence, dim_encoding)
+        sequence_pos, encoding_idx = torch.meshgrid(
+            torch.arange(len_sequence, device=device, dtype=torch.float),
+            torch.arange(dim_encoding, device=device, dtype=torch.float)
+        )
+        enc = torch.empty(len_sequence, dim_encoding, device=device)
+        enc[:, 0::2] = torch.sin(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 0::2] / dim_encoding)))
+        enc[:, 1::2] = torch.cos(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 1::2] / dim_encoding)))
+        return enc
 
 
 def process_file(filepath, destpath):
