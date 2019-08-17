@@ -183,7 +183,17 @@ class PearsonR(Metric):
         self._cov.update((x, y))
 
     def compute(self):
-        return self._cov.compute() / math.sqrt(self._var_x.compute() * self._var_y.compute())
+        # If var(x) or var(y) is very small (near constant x or y vectors),
+        var_x = self._var_x.compute()
+        var_y = self._var_y.compute()
+        denominator = math.sqrt(var_x * var_y)
+        if denominator < 1e-12:
+            import warnings
+            from scipy.stats import PearsonRConstantInputWarning
+            warnings.warn(PearsonRConstantInputWarning(
+                msg=f'Denominator too small: {denominator} = sqrt({var_x} * {var_y})'))
+            denominator = 1e-12
+        return self._cov.compute() / max(denominator, 1e-6)
 
 
 class R2(Metric):
