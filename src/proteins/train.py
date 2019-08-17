@@ -365,7 +365,6 @@ trainer = Engine(training_function)
 validator = Engine(validation_function)
 
 
-@trainer.on(Events.STARTED, session)
 def session_start(trainer, session):
     session['status'] = 'RUNNING'
     session['datetime_started'] = datetime.utcnow()
@@ -382,7 +381,6 @@ def session_start(trainer, session):
     logger.file_writer.add_summary(session_start_summary)
 
 
-@trainer.on(Events.EPOCH_STARTED)
 def setup_training(trainer):
     model.train()
     torch.set_grad_enabled(True)
@@ -465,38 +463,6 @@ def run_validation(trainer, validator, dataloader_val):
     validator.run(dataloader_val)
 
 
-trainer.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, session)
-trainer.add_event_handler(Events.ITERATION_COMPLETED, log_losses_batch, 'train')
-
-trainer.add_event_handler(Events.EPOCH_COMPLETED, update_completed_epochs, ex, session)
-trainer.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'train')
-trainer.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'train')
-trainer.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'train')
-trainer.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
-trainer.add_event_handler(Events.EPOCH_COMPLETED, run_validation, validator, dataloader_val)
-
-
-@validator.on(Events.EPOCH_STARTED)
-def setup_validation(validator):
-    model.eval()
-    torch.set_grad_enabled(False)
-
-
-def update_metrics(validator, ex, session):
-    metrics = build_dict((k.split('/'), v) for k, v in validator.state.metrics.items() if k.startswith('metric/'))
-    ex['metric'] = session['metric'] = metrics['metric']
-
-
-validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
-validator.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'val')
-validator.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'val')
-validator.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'val')
-validator.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
-validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, ex, session)
-validator.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
-
-
-@trainer.on(Events.COMPLETED, session)
 def session_end(trainer, session):
     session['status'] = 'COMPLETED'
     session['datetime_completed'] = datetime.utcnow()
@@ -515,13 +481,52 @@ def session_end(trainer, session):
 
     print(pyaml.dump(session['metric']))
 
+    # Need to save again because we updated session and gpu info
+    saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
+
+    # Log session end to tensorboard
     logger.add_text('Experiment',
                     textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
                     ex['samples'])
-
     session_end_summary = make_session_end_summary('SUCCESS')
     logger.file_writer.add_summary(session_end_summary)
 
+
+trainer.add_event_handler(Events.STARTED, session_start, session)
+trainer.add_event_handler(Events.EPOCH_STARTED, setup_training)
+
+trainer.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, session)
+trainer.add_event_handler(Events.ITERATION_COMPLETED, log_losses_batch, 'train')
+
+trainer.add_event_handler(Events.EPOCH_COMPLETED, update_completed_epochs, ex, session)
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
+trainer.add_event_handler(Events.EPOCH_COMPLETED, run_validation, validator, dataloader_val)
+
+trainer.add_event_handler(Events.COMPLETED, session_end, session)
+
+
+def setup_validation(validator):
+    model.eval()
+    torch.set_grad_enabled(False)
+
+
+def update_metrics(validator, ex, session):
+    metrics = build_dict((k.split('/'), v) for k, v in validator.state.metrics.items() if k.startswith('metric/'))
+    ex['metric'] = session['metric'] = metrics['metric']
+
+
+validator.add_event_handler(Events.EPOCH_STARTED, setup_validation)
+
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
+validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, ex, session)
+validator.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
 
 trainer.run(dataloader_train, max_epochs=session['max_epochs'])
 logger.close()
