@@ -385,7 +385,7 @@ def session_start(trainer, session):
     session['datetime_started'] = datetime.utcnow()
 
     session_start_summary = make_session_start_summary(hparam_values={
-        'data/cutoff': ex['data']['cutoff'],
+        **{f'data/{k}': v for k, v in ex['data'].items()},
         'optimizer/lr': ex['optimizer']['lr'],
         'optimizer/weight_decay': ex['optimizer']['weight_decay'],
         **{f'model/{k}': v for k, v in ex['model'].items()},

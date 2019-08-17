@@ -12,7 +12,9 @@ args = parser.parse_args()
 
 hparam_infos = {
     'data': {
-        'cutoff': {'type': float}
+        'cutoff': {'type': float},
+        'encoding_size': {'type': int},
+        'encoding_base': {'type': float},
     },
     'optimizer': {
         'lr': {'type': float},
