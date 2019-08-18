@@ -104,8 +104,12 @@ def make_session_start_summary(hparam_values, group_name: Optional[str] = None, 
     for hp_name, hp_value in hparam_values.items():
         # Logging a None would raise an exception when setting session_start_info.hparams[hp_name].number_value = None.
         # Logging a float.nan instead would work, but that run would not show at all in the tensorboard hparam plugin.
-        # The best thing is to skip that value, it will show as blank in tensorboard.
+        # The best thing to do here is to skip that value, it will show as a blank cell in the table view of the
+        # tensorboard plugin. However, that run would not be shown in the parallel coord or in the scatter plot view.
         if hp_value is None:
+            from warnings import warn
+            warn(f'Hyper parameter {hp_name} is `None`: the tensorboard hp plugin will show this run in table view, '
+                 f'but not in parallel coordinates view or in scatter plot matrix view')
             continue
 
         if isinstance(hp_value, string_types):
