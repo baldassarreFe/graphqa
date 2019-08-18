@@ -49,25 +49,34 @@ class RemoveEdges(object):
 
     def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
         # Remove edges between non-adjacent residues with distance greater than cutoff
-        senders = graph_in.senders
-        receivers = graph_in.receivers
-        edge_type = graph_in.edge_features[:, features.Input.Edge.EDGE_TYPE]
-        distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
-
         if self.cutoff < MAX_CUTOFF_DISTANCE:
-            to_keep = (edge_type == 1.) | (distances < self.cutoff)
-            senders = senders[to_keep]
-            receivers = receivers[to_keep]
-            edge_type = edge_type[to_keep]
-            distances = distances[to_keep]
+            distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
+            is_peptide_bond = graph_in.edge_features[:, features.Input.Edge.IS_PEPTIDE_BOND]
+            to_keep = (is_peptide_bond > 0) | (distances < self.cutoff)
 
-        # Distances are encoded using a 0-centered RBF with variance proportional to the cutoff
-        distances_rbf = torch.exp(- distances ** 2 / (2 * self.cutoff))
+            graph_in = graph_in.evolve(
+                senders=graph_in.senders[to_keep],
+                receivers=graph_in.receivers[to_keep],
+                edge_features=graph_in.edge_features[to_keep],
+            )
+
+        return protein, provider, graph_in, graph_target
+
+
+class RbfDistEdges(object):
+    def __init__(self, sigma: float):
+        self.sigma = sigma
+
+    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        # Distances are encoded using a 0-centered RBF with variance sigma
+        distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
+        distances_rbf = torch.exp(- distances ** 2 / (2 * self.sigma))
 
         graph_in = graph_in.evolve(
-            senders=senders,
-            receivers=receivers,
-            edge_features=torch.stack([edge_type, distances_rbf], dim=1),
+            edge_features=torch.cat((
+                distances_rbf[:, None],
+                graph_in.edge_features[:, features.Input.Edge.SEPARATION_OH]
+            ), dim=1),
         )
 
         return protein, provider, graph_in, graph_target
@@ -265,36 +274,43 @@ def protein_model_to_graph(protein, model_idx,
 
 
 def make_edges(coords):
+    import pandas as pd
     import scipy.spatial.distance
 
-    # The distances are returned in a condensed upper triangular form without the diagonal
+    # The distances are returned in a condensed upper triangular form without the diagonal,
+    # e.g. for 5 coordinates, we would have:
+    # distances = [dist(p[0], p[1]), dist(p[0], p[2]), dist(p[0], p[3]), ..., dist(p[3], p[4])]
+    # senders   = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3]
+    # receivers = [1, 2, 3, 4, 2, 3, 4, 3, 4, 4]
     distances = scipy.spatial.distance.pdist(coords)
     senders, receivers = np.triu_indices(len(coords), k=1)
-    idx_adjacent = receivers - senders == 1  # indexes of adjacent residues
 
-    # Chemically bonded adjacent residues = 1, non connected but close enough residues = 0
-    edge_type = np.zeros_like(distances)
-    edge_type[idx_adjacent] = 1.
+    # Separation = number of residues between two residues in the sequence.
+    # Chemically bonded adjacent residues have 0 separation.
+    # Separation is bucketized in 6 categories according to [0, 1, 2, 3, 4, 5:10, 10:]
+    separation = receivers - senders - 1
+    bins = [0, 1, 2, 3, 4, 5, 10]
+    separation_enc = np.digitize(separation, bins=bins, right=False) - 1
+    separation_onehot = pd.get_dummies(
+        pd.Categorical(separation_enc, categories=np.arange(len(bins)), ordered=True)).values
 
-    # The distance between adjacent residues might be missing because the residues don't have 3D coordinates
-    # in this particular model, we set it to the a random distance with mean and variance equal to
-    # the mean and variance of the distance between adjacent residues in the whole dataset
-    to_fill = np.logical_and(idx_adjacent, np.isnan(distances))
+    # The spatial distance between adjacent residues might be missing (NaN) because the residues don't have
+    # 3D coordinates in this particular model. For adjacent residues (separation = 0) we set the edge length
+    # to a random value with mean and variance equal to the mean and variance of the distance between
+    # adjacent residues in the whole dataset. For residues further apart (separation > 0) we leave NaN.
+    to_fill = np.logical_and(separation == 0, np.isnan(distances))
     distances[to_fill] = np.random.normal(5.349724573740155, 0.9130922391969375, np.count_nonzero(to_fill))
 
-    # Distances greater that 12 Angstrom are considered irrelevant and removed unless between adjacent residues
+    edge_features = np.concatenate((
+        distances[:, None],
+        separation_onehot
+    ), axis=1)
+
+    # Distances greater that 12 Angstrom are considered irrelevant and removed unless between adjacent residues.
     with np.errstate(invalid='ignore'):
-        is_relevant = distances < MAX_CUTOFF_DISTANCE
+        to_keep = np.logical_or(distances < MAX_CUTOFF_DISTANCE, separation == 0)
 
-    to_keep = np.logical_or(is_relevant, idx_adjacent)
-    senders = senders[to_keep]
-    receivers = receivers[to_keep]
-    distances = distances[to_keep]
-    edge_type = edge_type[to_keep]
-
-    edge_features = np.vstack((edge_type, distances)).transpose()
-
-    return senders, receivers, edge_features
+    return senders[to_keep], receivers[to_keep], edge_features[to_keep]
 
 
 def describe(filepath):

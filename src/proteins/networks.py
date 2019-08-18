@@ -13,6 +13,7 @@ class ProteinGN(nn.Module):
     def __init__(
             self,
             enc_in_nodes=83,
+            enc_in_edges=8,
             layers=1,
             mp_in_edges=8,
             mp_in_nodes=16,
@@ -30,7 +31,7 @@ class ProteinGN(nn.Module):
         # Node feature shape: 83 -> mp_in_nodes -> mp_in_nodes//2
         # Global feature shape: None -> mp_in_globals
         self.encoder = nn.Sequential(OrderedDict({
-            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=2),
+            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=enc_in_edges),
             'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
             'edge1_bn': tg.EdgeBatchNorm(num_features=mp_in_edges//2) if batch_norm else nn.Identity(),
             'edge1_relu': tg.EdgeReLU(),

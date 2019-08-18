@@ -28,7 +28,7 @@ from .utils import round_timedelta
 from .config import parse_args
 from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
-from .dataset import ProteinFolder, PositionalEncoding, RemoveEdges
+from .dataset import ProteinFolder, PositionalEncoding, RemoveEdges, RbfDistEdges
 from .metrics import ProteinMetrics, ProteinAverageLosses
 from .base_metrics import GpuMaxMemoryAllocated
 from .my_hparams import make_session_start_summary, make_session_end_summary
@@ -147,7 +147,7 @@ def load_model(config: Mapping) -> torch.nn.Module:
     # Reserved because used internally to fetch the model function/class and possibly load the weights
     reserved_keys = {'fn', 'state_dict'}
     # These args are computed based on other stuff, the user should not provide a value
-    computed_keys = {'enc_in_nodes'}
+    computed_keys = {'enc_in_nodes', 'enc_in_edges'}
 
     if 'fn' not in config:
         raise ValueError('Model function not specified')
@@ -164,6 +164,7 @@ def load_model(config: Mapping) -> torch.nn.Module:
     kwargs = {k: v for k, v in config.items() if k not in reserved_keys}
     model = function(
         enc_in_nodes=features.Input.Node.LENGTH + ex['data']['encoding_size'],
+        enc_in_edges=features.Input.Edge.LENGTH,
         **kwargs
     )
 
@@ -218,6 +219,7 @@ def get_dataloaders(ex, session):
 
     transforms = [
         RemoveEdges(cutoff=ex['data']['cutoff']),
+        RbfDistEdges(sigma=ex['data']['cutoff']),
         PositionalEncoding(
             encoding_size=ex['data']['encoding_size'], max_sequence_length=900, base=ex['data']['encoding_base'])
     ]
