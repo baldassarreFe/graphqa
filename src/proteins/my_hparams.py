@@ -93,6 +93,12 @@ def make_session_start_summary(hparam_values, group_name: Optional[str] = None, 
     session_start_info = SessionStartInfo(group_name=group_name, start_time_secs=start_time_secs)
 
     for hp_name, hp_value in hparam_values.items():
+        # Logging a None would raise an exception when setting session_start_info.hparams[hp_name].number_value = None.
+        # Logging a float.nan instead would work, but that run would not show at all in the tensorboard hparam plugin.
+        # The best thing is to skip that value, it will show as blank in tensorboard.
+        if hp_value is None:
+            continue
+
         if isinstance(hp_value, string_types):
             session_start_info.hparams[hp_name].string_value = hp_value
             continue
@@ -101,7 +107,7 @@ def make_session_start_summary(hparam_values, group_name: Optional[str] = None, 
             session_start_info.hparams[hp_name].bool_value = hp_value
             continue
 
-        if not isinstance(hp_value, int) or not isinstance(hp_value, float):
+        if not isinstance(hp_value, (int, float)):
             hp_value = make_np(hp_value)[0]
 
         session_start_info.hparams[hp_name].number_value = hp_value

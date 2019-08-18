@@ -417,6 +417,24 @@ def save_model(trainer, model, ex, optimizer, session):
         saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
 
 
+def handle_failure(engine, e, name, ex, session):
+    print(f'Exception raised during {name}, completed epochs {ex["completed_epochs"]}, samples {session["samples"]}')
+    print(e)
+
+    # Log session failure to tensorboard and to yaml
+    session['status'] = 'FAILED'
+    saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
+
+    logger.add_text('Experiment',
+                    textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
+                    ex['samples'])
+
+    session_end_summary = make_session_end_summary('FAILURE')
+    logger.file_writer.add_summary(session_end_summary)
+
+    raise e
+
+
 losses_avg = ProteinAverageLosses(
     lambda o: (o['loss']['local_lddt'], o['loss']['global_lddt'], o['loss']['global_gdtts'], o['num_samples']))
 losses_avg.attach(trainer)
@@ -509,6 +527,7 @@ def session_end(trainer, session):
 
 trainer.add_event_handler(Events.STARTED, session_start, session)
 trainer.add_event_handler(Events.EPOCH_STARTED, setup_training)
+trainer.add_event_handler(Events.EXCEPTION_RAISED, handle_failure, 'training', ex, session)
 
 trainer.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, session)
 trainer.add_event_handler(Events.ITERATION_COMPLETED, log_losses_batch, 'train')
@@ -534,6 +553,7 @@ def update_metrics(validator, ex, session):
 
 
 validator.add_event_handler(Events.EPOCH_STARTED, setup_validation)
+trainer.add_event_handler(Events.EXCEPTION_RAISED, handle_failure, 'validation', ex, session)
 
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'val')

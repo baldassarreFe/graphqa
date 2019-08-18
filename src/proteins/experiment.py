@@ -1,5 +1,6 @@
-import argparse
 import time
+import pyaml
+import argparse
 from pathlib import Path
 
 from tensorboardX import SummaryWriter
@@ -91,6 +92,10 @@ experiment = {
     'name': 'proteins',
     'time_created_secs': int(time.time())
 }
+
+pyaml.add_representer(type, lambda dumper, data: dumper.represent_str(data.__name__))
+pyaml.print({'experiment': experiment, 'hparams': hparam_infos, 'metrics': metric_infos},
+            safe=True, sort_dicts=False, force_embed=True)
 
 folder = (Path(args.folder) / 'experiment').expanduser().resolve()
 with SummaryWriter(folder) as writer:
