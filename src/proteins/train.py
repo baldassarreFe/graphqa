@@ -386,8 +386,7 @@ def session_start(trainer, session):
 
     session_start_summary = make_session_start_summary(hparam_values={
         **{f'data/{k}': v for k, v in ex['data'].items()},
-        'optimizer/lr': ex['optimizer']['lr'],
-        'optimizer/weight_decay': ex['optimizer']['weight_decay'],
+        **{f'optimizer/{k}': v for k, v in ex['optimizer'].items()},
         **{f'model/{k}': v for k, v in ex['model'].items()},
         **{f'loss/local_lddt/{k}': v for k, v in ex['loss']['local_lddt'].items()},
         **{f'loss/global_lddt/{k}': v for k, v in ex['loss']['global_lddt'].items()},
@@ -431,6 +430,7 @@ def handle_failure(engine, e, name, ex, session):
 
     session_end_summary = make_session_end_summary('FAILURE')
     logger.file_writer.add_summary(session_end_summary)
+    logger.close()
 
     raise e
 

@@ -25,7 +25,7 @@ def make_experiment_summary(hparam_infos, metric_infos, experiment):
             'domain_discrete', 'domain_interval'
         metric_infos: information about all metrics (tag, description etc.),
             list of dicts containing 'tag' (required), 'dataset_type', 'description', 'display_name'
-        experiment: dict containing 'name', 'description', 'time_created_secs', 'user'
+        experiment: dict containing 'name' (required), 'description', 'time_created_secs', 'user'
 
     Returns:
 
@@ -58,10 +58,19 @@ def make_experiment_summary(hparam_infos, metric_infos, experiment):
             display_name=metric.get('display_name')
         )
 
+    def make_experiment_info(experiment, metric_infos, hparam_infos):
+        return Experiment(
+            name=experiment['name'],
+            description=experiment.get('description'),
+            time_created_secs=experiment.get('time_created_secs'),
+            user=experiment.get('user'),
+            metric_infos=metric_infos,
+            hparam_infos=hparam_infos
+        )
+
     metric_infos = [make_metric_info(m) for m in metric_infos]
     hparam_infos = [make_hparam_info(hp) for hp in hparam_infos]
-
-    experiment = Experiment(**experiment, hparam_infos=hparam_infos, metric_infos=metric_infos)
+    experiment = make_experiment_info(experiment, metric_infos, hparam_infos)
 
     experiment_content = HParamsPluginData(experiment=experiment, version=PLUGIN_DATA_VERSION)
     experiment_summary_metadata = SummaryMetadata(plugin_data=SummaryMetadata.PluginData(

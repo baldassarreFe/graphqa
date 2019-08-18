@@ -1,7 +1,7 @@
-import time
 import pyaml
 import argparse
 from pathlib import Path
+from datetime import datetime
 
 from tensorboardX import SummaryWriter
 
@@ -9,6 +9,8 @@ from .my_hparams import make_experiment_summary
 
 parser = argparse.ArgumentParser()
 parser.add_argument('folder', help='The log folder to place the experiment configuration in')
+parser.add_argument('--datetime-created', type=datetime.fromisoformat, default=datetime.now(),
+                    help='Experiment creation time in UTC, e.g. 2019-08-31T13:40')
 args = parser.parse_args()
 
 hparam_infos = {
@@ -18,6 +20,7 @@ hparam_infos = {
         'encoding_base': {'type': float},
     },
     'optimizer': {
+        'fn': {'type': str},
         'lr': {'type': float},
         'weight_decay': {'type': float},
     },
@@ -90,7 +93,7 @@ metric_infos = [
 
 experiment = {
     'name': 'proteins',
-    'time_created_secs': int(time.time())
+    'time_created_secs': int((args.datetime_created.timestamp()))
 }
 
 pyaml.add_representer(type, lambda dumper, data: dumper.represent_str(data.__name__))
@@ -100,6 +103,6 @@ pyaml.print({'experiment': experiment, 'hparams': hparam_infos, 'metrics': metri
 folder = (Path(args.folder) / 'experiment').expanduser().resolve()
 with SummaryWriter(folder) as writer:
     experiment_summary = make_experiment_summary(hparam_infos, metric_infos, experiment)
-    writer.file_writer.add_summary(experiment_summary)
+    writer.file_writer.add_summary(experiment_summary, walltime=int((args.datetime_created.timestamp())))
 
 print('Experiment summary saved to', folder)
