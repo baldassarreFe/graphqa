@@ -16,6 +16,8 @@ args = parser.parse_args()
 hparam_infos = {
     'data': {
         'cutoff': {'type': float},
+        'sigma': {'type': float},
+        'separation': {'type': bool},
         'encoding_size': {'type': int},
         'encoding_base': {'type': float},
     },

@@ -82,6 +82,20 @@ class RbfDistEdges(object):
         return protein, provider, graph_in, graph_target
 
 
+class SeparationEncoding(object):
+    def __init__(self, use_separation: bool):
+        self.use_separation = use_separation
+
+    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        if not self.use_separation:
+            feature_columns = [features.Input.Edge.SPATIAL_DISTANCE, features.Input.Edge.IS_PEPTIDE_BOND]
+            graph_in = graph_in.evolve(
+                edge_features=graph_in.edge_features[:, feature_columns]
+            )
+
+        return protein, provider, graph_in, graph_target
+
+
 class PositionalEncoding(object):
     def __init__(self, encoding_size, max_sequence_length, base, device='cpu'):
         self.encoding_size = encoding_size
