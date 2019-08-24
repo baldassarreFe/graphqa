@@ -22,7 +22,6 @@ class Output(object):
     class Node(object):
         LOCAL_LDDT = 0
         LOCAL_LDDT_WEIGHT = 1
-        NATIVE_DETERMINED = 2
 
         LENGTH = 1
 

@@ -3,6 +3,7 @@ examples/
 notebooks/
 data/
 runs/
+test/
 
 # IntelliJ
 .idea/

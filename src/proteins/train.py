@@ -1,4 +1,5 @@
 import os
+import yaml
 import pyaml
 import random
 import inspect
@@ -11,6 +12,7 @@ from datetime import datetime
 from operator import itemgetter
 
 import numpy as np
+import pandas as pd
 import namesgenerator
 
 import torch
@@ -24,11 +26,11 @@ from ignite.contrib.handlers import ProgressBar
 
 from . import features
 from .config import build_dict
-from .utils import round_timedelta
+from .utils import round_timedelta, load_model
 from .config import parse_args
 from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
-from .dataset import ProteinFolder, PositionalEncoding, RemoveEdges, RbfDistEdges, SeparationEncoding
+from .dataset import ProteinQualityDataset, PositionalEncoding, RemoveEdges, RbfDistEdges, SeparationEncoding
 from .metrics import ProteinMetrics, ProteinAverageLosses
 from .base_metrics import GpuMaxMemoryAllocated
 from .my_hparams import make_session_start_summary, make_session_end_summary
@@ -54,9 +56,12 @@ ex = parse_args(config={
     'session': {
         'max_epochs': 1,
         'batch_size': 1,
-        'seed': random.randint(0, 99),
+        'seed': random.randint(0, 9999),
         'cpus': multiprocessing.cpu_count() - 1,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+        'data': {
+            'folder': os.environ.get('DATA_FOLDER', './data').split(':')
+        },
         'log': [],
         'checkpoint': -1,
     }
@@ -103,9 +108,18 @@ ex['completed_epochs'] = sum((session['completed_epochs'] for session in ex['his
 ex['samples'] = sum((session['samples'] for session in ex['history']), 0)
 ex['fullname'] = ex['fullname'].format(tags='_'.join(ex['tags']), rand=namesgenerator.get_random_name())
 
+# These args are computed based on other stuff, the user should not provide a value,
+# unless we are continuing training on top a previous session.
+if ex['completed_epochs'] == 0:
+    model_kwargs = {'enc_in_nodes', 'enc_in_edges'}
+    if not set.isdisjoint(set(ex['model'].keys()), model_kwargs):
+        raise ValueError(f'Model config dict can not have any of {model_kwargs} in its arguments, '
+                         f'found: {", ".join(set.intersection(set(ex["model"].keys()), model_kwargs))}')
+ex['model']['enc_in_nodes'] = features.Input.Node.LENGTH + ex['data']['encoding_size']
+ex['model']['enc_in_edges'] = features.Input.Edge.LENGTH if ex['data']['separation'] else 2
+
 # Session computed fields
 # ex['history'].append(session)  # do it here or when all epochs are done?
-
 session['completed_epochs'] = 0
 session['samples'] = 0
 session['status'] = 'NEW'
@@ -114,7 +128,10 @@ session['datetime_completed'] = None
 session['git'] = git_info()
 session['cuda'] = cuda_info() if 'cuda' in session['device'] else None
 session['metric'] = {}
-session['checkpoint'] = session['checkpoint']
+# 0 = no checkpoint, 1 = every epoch, n = every n epochs, -1 = last epoch
+session['checkpoint'] = range(0, session['max_epochs'] + 1)[session['checkpoint']]
+if not isinstance(session['data']['folder'], list):
+    session['data']['folder'] = [session['data']['folder']]
 
 if session['cpus'] < 0:
     raise ValueError(f'Invalid number of cpus: {session["cpus"]}')
@@ -127,7 +144,7 @@ ex['history'].append(session)
 sort_dict(ex, ['name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model',
                'optimizer', 'loss', 'metric', 'history'])
 sort_dict(session, ['completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
-                    'datetime_started', 'datetime_completed', 'log', 'checkpoint', 'metric', 'git', 'gpus'])
+                    'datetime_started', 'datetime_completed', 'data', 'log', 'checkpoint', 'metric', 'git', 'cuda'])
 
 pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # endregion
@@ -143,34 +160,6 @@ if ex['completed_epochs'] == 0:
 
 
 # Model and optimizer
-def load_model(config: Mapping) -> torch.nn.Module:
-    # Reserved because used internally to fetch the model function/class and possibly load the weights
-    reserved_keys = {'fn', 'state_dict'}
-    # These args are computed based on other stuff, the user should not provide a value
-    computed_keys = {'enc_in_nodes', 'enc_in_edges'}
-
-    if 'fn' not in config:
-        raise ValueError('Model function not specified')
-
-    function = import_(config['fn'])
-    function_args = inspect.signature(function).parameters.keys()
-    if not set.isdisjoint(reserved_keys, function_args):
-        raise ValueError(f'Model function can not have any of {reserved_keys} in its arguments, '
-                         f'signature is {", ".join(function_args)}')
-    if not set.isdisjoint(set(config.keys()), computed_keys):
-        raise ValueError(f'Config dict can not have any of {computed_keys} in its arguments, '
-                         f'found {", ".join(set.intersection(set(config.keys()), computed_keys))}')
-
-    kwargs = {k: v for k, v in config.items() if k not in reserved_keys}
-    model = function(
-        enc_in_nodes=features.Input.Node.LENGTH + ex['data']['encoding_size'],
-        enc_in_edges=features.Input.Edge.LENGTH if ex['data']['separation'] else 2,
-        **kwargs
-    )
-
-    return model
-
-
 def load_optimizer(config: Mapping, model: torch.nn.Module) -> torch.optim.Optimizer:
     special_keys = {'fn'}
 
@@ -199,7 +188,7 @@ if ex['completed_epochs'] > 0:  # Load latest weights and optimizer state
 else:
     if 'state_dict' in ex['model']:  # A new experiment but using pretrained weights
         model.load_state_dict(torch.load(
-            Path(ex['model']['state_dict']).expanduser(), map_location=session['device']))
+            Path(ex['model']['state_dict']).expanduser().resolve(), map_location=session['device']))
 
 # Logger: log experiment configuration and model parameters
 logger = SummaryWriter(saver.base_folder)
@@ -215,23 +204,43 @@ if ex['samples'] == 0:
 
 # Datasets and dataloaders
 def get_dataloaders(ex, session):
-    data_folder = Path(os.environ.get('DATA_FOLDER', './data'))
+    df_samples = []
+    max_sequence_length = 0
+
+    for folder in session['data']['folder']:
+        folder = Path(folder).expanduser().resolve()
+        if not folder.is_dir():
+            raise ValueError(f'Not a directory: {folder}')
+        with open(folder / 'dataset_stats.yaml') as f:
+            max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+        df = pd.read_csv(folder / 'samples.csv', header=0)
+        df['path'] = [folder / p for p in df['path']]
+        df_samples.append(df)
+
+    # If this session is continuing a previous session, make sure to always use the same data split
+    local_random = np.random.RandomState(ex['history'][0]['seed'])
+    df_samples = pd.concat(df_samples, ignore_index=True)
+    targets = local_random.permutation(df_samples.target.unique())
+    df_train = df_samples[df_samples.target.isin(targets[25:])]
+    df_val = df_samples[df_samples.target.isin(targets[:25])]
+
+    if 'QUICK_RUN' in os.environ:
+        print('QUICK RUN: limiting the train and val datasets to 5 targets each')
+        df_train = df_samples[df_samples.target.isin(targets[-5:])]
+        df_val = df_samples[df_samples.target.isin(targets[:5])]
+
+    assert set.isdisjoint(set(df_train.target), set(df_val.target))
 
     transforms = [
         RemoveEdges(cutoff=ex['data']['cutoff']),
         RbfDistEdges(sigma=ex['data']['sigma']),
         SeparationEncoding(use_separation=ex['data']['separation']),
-        PositionalEncoding(
-            encoding_size=ex['data']['encoding_size'], max_sequence_length=900, base=ex['data']['encoding_base'])
+        PositionalEncoding(encoding_size=ex['data']['encoding_size'], base=ex['data']['encoding_base'],
+                           max_sequence_length=max_sequence_length)
     ]
 
-    dataset_train = ProteinFolder(data_folder / 'training', transforms=transforms)
-    dataset_val = ProteinFolder(data_folder / 'validation', transforms=transforms)
-
-    if 'QUICK_RUN' in os.environ:
-        print('QUICK RUN: limiting the datasets to 5 batches')
-        dataset_train = torch.utils.data.Subset(dataset_train, range(5 * session['batch_size']))
-        dataset_val = torch.utils.data.Subset(dataset_val, range(5 * session['batch_size']))
+    dataset_train = ProteinQualityDataset(df_train, transforms=transforms)
+    dataset_val = ProteinQualityDataset(df_val, transforms=transforms)
 
     dataloader_kwargs = dict(
         num_workers=session['cpus'],
@@ -264,7 +273,6 @@ def training_function(trainer, batch):
 
     if ex['loss']['local_lddt']['weight'] > 0:
         node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
-        assert torch.isfinite(targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT]).all().item()
         loss_local_lddt = F.mse_loss(
             results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
             targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
@@ -379,10 +387,6 @@ def validation_function(validator, batch):
     }
 
 
-trainer = Engine(training_function)
-validator = Engine(validation_function)
-
-
 def session_start(trainer, session):
     session['status'] = 'RUNNING'
     session['datetime_started'] = datetime.utcnow()
@@ -415,7 +419,7 @@ def update_completed_epochs(trainer, ex, session):
 
 
 def save_model(trainer, model, ex, optimizer, session):
-    if session['checkpoint'] != 0 and session['completed_epochs'] % session['checkpoint'] == 0:
+    if session['checkpoint'] > 0 and session['completed_epochs'] % session['checkpoint'] == 0:
         saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
 
 
@@ -437,6 +441,9 @@ def handle_failure(engine, e, name, ex, session):
 
     raise e
 
+
+trainer = Engine(training_function)
+validator = Engine(validation_function)
 
 losses_avg = ProteinAverageLosses(
     lambda o: (o['loss']['local_lddt'], o['loss']['global_lddt'], o['loss']['global_gdtts'], o['num_samples']))

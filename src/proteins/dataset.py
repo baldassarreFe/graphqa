@@ -1,7 +1,12 @@
+import sys
 from pathlib import Path
 from typing import Optional, Union
+from warnings import warn
 
+import tqdm
+import pyaml
 import numpy as np
+import pandas as pd
 import torch.utils.data
 import torchgraphs as tg
 
@@ -10,23 +15,20 @@ from . import features
 MAX_CUTOFF_DISTANCE = 12
 
 
-class ProteinFolder(torch.utils.data.Dataset):
-    def __init__(self, folder, transforms=()):
+class ProteinQualityDataset(torch.utils.data.Dataset):
+    def __init__(self, samples: pd.DataFrame, transforms=()):
         """Load graph samples in `*.pt` format from a folder
-        :param folder: the dataset folder
+        :param samples: a pandas dataframe with columns {'target', 'model', 'path'}
+        :param transforms: transformations to apply to every sample
         """
-        folder = Path(folder).expanduser().resolve()
-        if not folder.is_dir():
-            raise ValueError(f'Not a directory: {folder}')
-
+        self.samples = samples
         self.transforms = transforms
-        self.samples = sorted(f for f in folder.glob('sample*.pt'))
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, item):
-        path = self.samples[item]
+        path = self.samples.path.iloc[item]
         sample = torch.load(path)  # type: (str, str, tg.Graph, tg.Graph)
 
         for t in self.transforms:
@@ -141,73 +143,104 @@ class PositionalEncoding(object):
 
 
 def process_file(filepath, destpath):
-    import tqdm
     import tables
-    import pandas as pd
+
+    filepath = Path(filepath).expanduser().resolve()
+    h5_file = tables.open_file(filepath)
 
     destpath = Path(destpath).expanduser().resolve()
-    destpath.mkdir(parents=True, exist_ok=True)
+    destpath.mkdir(parents=True, exist_ok=False)
 
-    local_lddt_scores = []
-    global_lddt_scores = []
-    global_gdtts_scores = []
+    scores = {
+        'local_lddt': [],
+        'local_sscore': [],
+        'global_lddt': [],
+        'global_gdtts': [],
+        'global_gdtts_ha': [],
+        'global_rmsd': [],
+        'global_maxsub': [],
+    }
+    sequence_lengths = []
+    protein_count = 0
+    model_count = 0
 
     # First pass: enumerate proteins, count models, prepare frequency stats
     proteins = []
-    total_models = 0
-    h5_file = tables.open_file(filepath)
     for protein in h5_file.list_nodes('/'):
         # I'm not sure why the file contains these nodes, but they are not proteins for sure
-        if protein._v_pathname.startswith(('/casp', '/cameo')):
+        protein_name = protein._v_name
+        if protein_name.startswith(('casp', 'cameo')):
             continue
 
-        local_lddt_scores.append(np.array(protein.lddt).ravel())
-        global_lddt_scores.append(np.array(protein.lddt_global))
-        global_gdtts_scores.append(np.nanmean(protein.s_scores, axis=1))
+        num_models = len(protein.names)
+        if num_models <= 5:
+            warn(f'Skipping target {protein_name} with only {num_models} model(s).')
+            continue
 
-        total_models += len(protein.names)
+        scores['local_lddt'].append(np.array(protein.lddt).ravel())
+        scores['local_sscore'].append(np.array(protein.s_scores).ravel())
+        scores['global_lddt'].append(np.array(protein.lddt_global))
+        scores['global_gdtts'].append(np.array(protein.gdt_ts))
+        scores['global_gdtts_ha'].append(np.array(protein.gdt_ts_ha))
+        scores['global_rmsd'].append(np.array(protein.rmsd))
+        scores['global_maxsub'].append(np.array(protein.max_sub))
+
+        protein_count += 1
+        sequence_lengths.append(protein.seq.shape[1])
+        model_count += num_models
         proteins.append(protein)
 
-    local_lddt_scores = pd.Series(np.concatenate(local_lddt_scores), name='local_lddt').dropna()
-    global_lddt_scores = pd.Series(np.concatenate(global_lddt_scores), name='global_lddt').dropna()
-    global_gdtts_scores = pd.Series(np.concatenate(global_gdtts_scores), name='global_gdtts').dropna()
-    
-    def make_frequency(series):
-        """Quantize the values in a series into 20 equally spaced bins and compute frequency counts"""
-        return pd.cut(series, bins=np.linspace(0, 1, num=20 + 1), include_lowest=True).value_counts().sort_index()
+        Path.mkdir(destpath / protein_name, exist_ok=False)
+        with open(destpath / protein_name / 'protein_stats.yaml', 'w') as f:
+            pyaml.dump({
+                'protein': protein_name,
+                'num_models': len(protein.names),
+                'length': protein.seq.shape[1],
+            }, dst=f, sort_dicts=False)
 
+    dataset_stats = {
+        'dataset': Path(filepath).name,
+        'num_proteins': protein_count,
+        'num_models': model_count,
+        'avg_length': sum(sequence_lengths) / protein_count,
+        'max_length': max(sequence_lengths),
+    }
+    pyaml.print(dataset_stats, sort_dicts=False)
+    with open(destpath / 'dataset_stats.yaml', 'w') as f:
+        pyaml.dump(dataset_stats, dst=f, sort_dicts=False)
+
+    # Bucketize the scores into 20 equally-spaced bins in the range [0, 1] and compute frequency counts for each bin.
     # Compute weights for the local scores proportionally to the inverse of the frequency of
     # that score in the dataset, set minimum frequency to 1 to avoid +inf weights
-    local_lddt_frequencies = make_frequency(local_lddt_scores)
-    local_lddt_frequencies.to_pickle(destpath / 'local_lddt_frequencies.pkl')
-    local_lddt_weights = local_lddt_frequencies.max() / local_lddt_frequencies.clip(lower=1)
-
-    global_lddt_frequencies = make_frequency(global_lddt_scores)
-    global_lddt_frequencies.to_pickle(destpath / 'global_lddt_frequencies.pkl')
-    global_lddt_weights = global_lddt_frequencies.max() / global_lddt_frequencies.clip(lower=1)
-
-    global_gdtts_frequencies = make_frequency(global_gdtts_scores)
-    global_gdtts_frequencies.to_pickle(destpath / 'global_gdtts_frequencies.pkl')
-    global_gdtts_weights = global_gdtts_frequencies.max() / global_gdtts_frequencies.clip(lower=1)
+    weights = {}
+    bins = np.linspace(0, 1, num=20 + 1)
+    for name, scores in scores.items():
+        scores = pd.Series(np.concatenate(scores), name=name).dropna()
+        frequencies = pd.cut(scores, bins=bins, include_lowest=True).value_counts().sort_index()
+        frequencies.to_pickle(destpath / f'{name}_frequencies.pkl')
+        weights[name] = frequencies.max() / frequencies.clip(lower=1)
 
     # Second pass: save every model as a pytorch object
-    protein_bar = tqdm.tqdm(proteins, desc='Proteins', unit=' proteins', leave=True)
-    models_bar = tqdm.tqdm(total=total_models, desc='Models  ', unit=' models', leave=True)
-    for i, protein in enumerate(protein_bar):
-        for j in range(len(protein.names)):
-            sample = protein_model_to_graph(protein, j, local_lddt_weights, global_lddt_weights, global_gdtts_weights)
-            torch.save(sample, destpath / f'sample_{i}_{j}.pt')
+    models_bar = tqdm.tqdm(total=model_count, desc='Models  ', unit=' models', leave=False)
+    samples_df = []
+    for protein in proteins:
+        for model_idx in range(len(protein.names)):
+            sample = protein_model_to_graph(protein, model_idx, weights)
+            torch.save(sample, destpath / sample[0] / f'{sample[1]}.pt')
+            samples_df.append({
+                'target': sample[0],
+                'model': sample[1],
+                'path': f'{sample[0]}/{sample[1]}.pt'
+            })
             models_bar.update()
-    protein_bar.close()
+    pd.DataFrame(samples_df).to_csv(destpath / 'samples.csv', header=True, index=False)
     models_bar.close()
-
     h5_file.close()
 
 
-def protein_model_to_graph(protein, model_idx,
-                           local_lddt_weights_table, global_lddt_weights_table, global_gdtts_weights_table):
+def protein_model_to_graph(protein, model_idx, weights):
     # Name of this protein
-    protein_name = protein._v_pathname[1:]
+    protein_name = protein._v_name
 
     # Protein sequence and multi-sequence-alignment features, common to all models
     residues = protein.seq[0]                # One-hot encoding of the residues present in this model
@@ -215,43 +248,67 @@ def protein_model_to_graph(protein, model_idx,
     self_information = protein.self_info[0]  # Self information of the residues
     sequence_length = len(residues)
 
-    # Secondary structure is determined using some method by some research group (provider).
+    # Secondary structure is determined using some method by some research group.
     # All models use the original sequence as source, but can fail to determine a structure for some residues.
     # The DSSP features are extracted for the residues whose 3D coordinates are determined.
     # Missing DSSP features are filled with 0s in the dataset.
-    provider = protein.names[model_idx].decode('utf-8')    # Who built this model of the protein
-    coordinates = protein.cb_coordinates[model_idx]        # Coordinates of the β carbon (α if β is not present)
-    structure_determined = protein.valid_dssp[model_idx]   # Which residues are determined within this model
-    native_determined = protein.valid_dssp[0]              # Which residues are determined in the native structure
-    dssp_features = protein.dssp[model_idx]                # DSSP features for the secondary structure
+    decoy_name = protein.names[model_idx].decode('utf-8')               # Who built this model of the protein
+    coordinates = protein.cb_coordinates[model_idx]                     # Coordinates of the β carbon (α if β is not present)
+    structure_determined = protein.valid_dssp[model_idx]                # Which residues are determined within this model
+    native_determined = np.array(protein.valid_dssp[0], dtype=np.bool)  # Which residues are determined in the native structure
+    dssp_features = protein.dssp[model_idx]                             # DSSP features for the secondary structure
 
     # For every residue, a score is determined by comparison with the native structure (using LDDT)
     # For some models, it is not possible to assign a score to a residue if:
     # - the experiment to determine the native model has failed to  _observe_ the secondary structure of that residue
     # - the algorithm to determine this model has failed to _determine_ the secondary structure of that residue
     # Frequency weights are looked up in the corresponding weights table (NaN scores get NaN weight).
-    local_lddt = protein.lddt[model_idx]         # Quality scores of the residues
-    local_lddt_valid = protein.valid[model_idx]  # Whether the local score is valid or not
-    local_lddt[~local_lddt_valid] = np.nan       # For native structure the score is set to 1. for all residues,
-                                                 # including non determined ones, we fix it by removing those scores.
-    local_lddt_weights = np.full_like(local_lddt, fill_value=float('nan'))  # Frequency weights
-    local_lddt_weights[local_lddt_valid] = local_lddt_weights_table.loc[local_lddt[local_lddt_valid]].values
+    local_lddt = protein.lddt[model_idx]  # Quality scores of the residues
+
+    local_lddt_valid = np.logical_and(native_determined, structure_determined)  # Whether local score is valid or not
+    local_lddt_valid_data = np.array(protein.valid[model_idx], dtype=np.bool)
+    if np.any(local_lddt_valid != local_lddt_valid_data):
+        tqdm.tqdm.write(f'Inconsistent validity of LDDT scores for {protein_name}/{decoy_name}, using intersection: '
+                        f'found {np.count_nonzero(local_lddt_valid_data)} '
+                        f'expected {np.count_nonzero(local_lddt_valid)}.', file=sys.stderr)
+        local_lddt_valid = np.logical_and(local_lddt_valid, local_lddt_valid_data)
+        local_lddt[~local_lddt_valid] = np.nan
+
+    if np.logical_and(local_lddt_valid, np.isnan(local_lddt)).any():
+        raise ValueError(f'Missing LDDT scores for {protein_name}/{decoy_name}: '
+                         f'found {np.count_nonzero(~np.isnan(local_lddt))} '
+                         f'expected {np.count_nonzero(local_lddt_valid)}.')
+
+    if np.logical_and(~local_lddt_valid, ~np.isnan(local_lddt)).any():
+        # We found residues that have a score even if they shouldn't, we remove the score and go on.
+        tqdm.tqdm.write(f'Unexpected LDDT scores for {protein_name}/{decoy_name}, those will be removed: '
+                        f'found {np.count_nonzero(~np.isnan(local_lddt))} '
+                        f'expected {np.count_nonzero(local_lddt_valid)}.', file=sys.stderr)
+        local_lddt[~local_lddt_valid] = np.nan
+
+    local_lddt_weights = np.full_like(local_lddt, fill_value=np.nan)            # Frequency weights
+    local_lddt_weights[local_lddt_valid] = weights['local_lddt'].loc[local_lddt[local_lddt_valid]].values
+    if np.isnan(local_lddt[local_lddt_valid]).any() or np.isnan(local_lddt_weights[local_lddt_valid]).any():
+        raise ValueError(f'Found NaN values in LDDT scores for {protein_name}/{decoy_name}')
 
     # The global LDDT score is an average of the local LDDT scores:
     # - residues missing from the model get a score of 0
     # - residues missing from the native structure are ignored in the average
     # Frequency weight us looked up in the corresponding weights table.
-    global_lddt = protein.lddt_global[model_idx]                      # Quality score of the whole model
-    global_lddt_weight = global_lddt_weights_table.loc[global_lddt]  # Frequency weight
+    global_lddt = protein.lddt_global[model_idx]                  # Quality score of the whole model
+    global_lddt_weight = weights['global_lddt'].loc[global_lddt]  # Frequency weight
+    if np.isnan(global_lddt) or np.isnan(global_lddt_weight):
+        raise ValueError(f'Found NaN values in global LDDT score for {protein_name}/{decoy_name}')
 
     # The global GDT_TS score is another way of scoring the quality of a model.
     # Until we get GDT_TS in the dataset we use an average of the local S-score as a proxy for GDT_TS.
     # This is ok because GDT_TS and S-scores have a Pearson correlation of 1.
     # Since the S-score of missing residues is NaN, we ignore those scores when taking the mean.
     # Frequency weight is looked up in the corresponding weights table.
-    local_sscore = protein.s_scores[model_idx]
-    global_gdtts = np.nanmean(local_sscore)                             # Quality score of the whole model
-    global_gdtts_weight = global_gdtts_weights_table.loc[global_gdtts]  # Frequency weight
+    global_gdtts = protein.gdt_ts[model_idx]                         # Quality score of the whole model
+    global_gdtts_weight = weights['global_gdtts'].loc[global_gdtts]  # Frequency weight
+    if np.isnan(global_gdtts) or np.isnan(global_gdtts_weight):
+        raise ValueError(f'Found NaN values in global GDT_TS score for {protein_name}/{decoy_name}')
 
     senders, receivers, edge_features = make_edges(coordinates)
 
@@ -274,7 +331,6 @@ def protein_model_to_graph(protein, model_idx,
         node_features=torch.from_numpy(np.stack([
             local_lddt,
             local_lddt_weights,
-            native_determined,
         ], axis=1)).float(),
         global_features=torch.tensor([
             global_lddt,
@@ -284,7 +340,7 @@ def protein_model_to_graph(protein, model_idx,
         ]).float()
     ).validate()
 
-    return protein_name, provider, graph_in, graph_target
+    return protein_name, decoy_name, graph_in, graph_target
 
 
 def make_edges(coords):

@@ -1,10 +1,12 @@
 import yaml
+import inspect
 import itertools
 import subprocess
 import collections
 from datetime import timedelta
 from typing import Mapping, Iterable, MutableMapping
 
+import torch.nn
 import numpy as np
 
 
@@ -91,7 +93,6 @@ def update_rec(target, source):
         if k in target and isinstance(target[k], Mapping) and isinstance(source[k], Mapping):
             update_rec(target[k], source[k])
         else:
-            # AutoMunch should do its job, but sometimes it doesn't
             target[k] = source[k]
 
 
@@ -173,3 +174,20 @@ class RunningStats(object):
 
     def __str__(self):
         return f'{self.mean} ± {self.std} (min: {self.min}, max: {self.max}, count: {self.count})'
+
+
+def load_model(config: Mapping) -> torch.nn.Module:
+    # Reserved because used internally to fetch the model function/class and possibly load the weights
+    reserved_keys = {'fn', 'state_dict'}
+
+    if 'fn' not in config:
+        raise ValueError('Model function not specified')
+
+    function = import_(config['fn'])
+    function_args = inspect.signature(function).parameters.keys()
+    if not set.isdisjoint(reserved_keys, function_args):
+        raise ValueError(f'Model function can not have any of {reserved_keys} in its arguments, '
+                         f'signature is {", ".join(function_args)}')
+
+    model = function(**{k: v for k, v in config.items() if k not in reserved_keys})
+    return model

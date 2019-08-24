@@ -2,9 +2,10 @@
 
 ## Preprocessing
 ```bash
-python -m proteins.dataset preprocess --filepath data/training_casp9_10.v4.h5 --destpath data/training
-python -m proteins.dataset preprocess --filepath data/validation_casp11.v4.h5 --destpath data/validation
-python -m proteins.dataset preprocess --filepath data/testing_cameo.v4.h5 --destpath data/testing
+for f in data/*.h5; do
+    rm -r "${f%.*}"
+    python -m proteins.dataset preprocess --filepath "$f" --destpath "${f%.*}" 
+done
 ```
 
 ## Tensorboard plugins: Custom Scalars Layout and Hyper Parameters
@@ -19,4 +20,16 @@ python -m proteins.train \
   config/train.yaml "tags=['debug']" \
   --model config/model.yaml \ 
   --session config/session.yaml batch_size=100 max_epochs=2
+```
+
+## Testing
+```bash
+RUN_PATH=path/to/run/
+python -m proteins.test \
+  "${RUN_PATH}/experiment.latest.yaml" \
+  --model state_dict="${RUN_PATH}/model.latest.yaml" \
+  --test \
+    data.input=data/CASP12 \
+    data.output=test/CASP12 \
+    batch_size=25
 ```
