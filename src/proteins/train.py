@@ -25,15 +25,14 @@ from ignite.engine import Engine, Events
 from ignite.contrib.handlers import ProgressBar
 
 from . import features
-from .config import build_dict
 from .utils import round_timedelta, load_model
 from .config import parse_args
 from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
 from .dataset import ProteinQualityDataset, PositionalEncoding, RemoveEdges, RbfDistEdges, SeparationEncoding
-from .metrics import ProteinMetrics, ProteinAverageLosses
-from .base_metrics import GpuMaxMemoryAllocated
+from .metrics import customize_state, ProteinAverageLosses, LocalMetrics, GlobalMetrics, GpuMaxMemoryAllocated
 from .my_hparams import make_session_start_summary, make_session_end_summary
+from .ignite_commons import setup_training, setup_validation, update_metrics, handle_failure, flush_logger
 
 # region Arguments parsing
 ex = parse_args(config={
@@ -49,7 +48,6 @@ ex = parse_args(config={
         'global_lddt': {},
         'global_gdtts': {},
     },
-    'metric': {},
     'history': [],
 
     # Session defaults
@@ -59,10 +57,8 @@ ex = parse_args(config={
         'seed': random.randint(0, 9999),
         'cpus': multiprocessing.cpu_count() - 1,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
-        'data': {
-            'folder': os.environ.get('DATA_FOLDER', './data').split(':')
-        },
-        'log': [],
+        'data': {},
+        # 'log': 1,
         'checkpoint': -1,
     }
 })
@@ -81,8 +77,8 @@ def validate_history(history):
                 raise ValueError(f'Missing number of samples in completed session:\n{session}')
             if 'completed_epochs' not in session:
                 raise ValueError(f'Missing number of epochs in completed session:\n{session}')
-            
-            
+
+
 def validate_losses(losses):
     if not isinstance(losses, dict):
         raise ValueError('Losses must be a dict')
@@ -128,24 +124,32 @@ session['datetime_completed'] = None
 session['git'] = git_info()
 session['cuda'] = cuda_info() if 'cuda' in session['device'] else None
 session['metric'] = {}
-# 0 = no checkpoint, 1 = every epoch, n = every n epochs, -1 = last epoch
+# 0 = no checkpoint/log, 1 = every epoch, n = every n epochs, -1 = last epoch
 session['checkpoint'] = range(0, session['max_epochs'] + 1)[session['checkpoint']]
-if not isinstance(session['data']['folder'], list):
-    session['data']['folder'] = [session['data']['folder']]
-
+# session['log'] = range(0, session['max_epochs'] + 1)[session['log']]
 if session['cpus'] < 0:
     raise ValueError(f'Invalid number of cpus: {session["cpus"]}')
 if session['seed'] is None:
     raise ValueError(f'Invalid seed: {session["seed"]}')
-
+if session['data'].keys() == {'trainval', 'split'}:
+    if isinstance(session['data']['trainval'], str):
+        session['data']['trainval'] = session['data']['trainval'].split(':')
+    if not isinstance(session['data']['split'], int) or session['data']['split'] <= 0:
+        raise ValueError(f'Invalid data split {session["data"]["split"]}')
+elif session['data'].keys() == {'train', 'val'}:
+    if isinstance(session['data']['train'], str):
+        session['data']['train'] = session['data']['train'].split(':')
+    if isinstance(session['data']['val'], str):
+        session['data']['val'] = session['data']['val'].split(':')
+else:
+    raise ValueError(f'Invalid data specification: {session["data"]}')
 ex['history'].append(session)
 
 # Print config so far
 sort_dict(ex, ['name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model',
-               'optimizer', 'loss', 'metric', 'history'])
+               'optimizer', 'loss', 'history'])
 sort_dict(session, ['completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
                     'datetime_started', 'datetime_completed', 'data', 'log', 'checkpoint', 'metric', 'git', 'cuda'])
-
 pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # endregion
 
@@ -204,30 +208,55 @@ if ex['samples'] == 0:
 
 # Datasets and dataloaders
 def get_dataloaders(ex, session):
-    df_samples = []
     max_sequence_length = 0
+    if session['data'].keys() == {'trainval', 'split'}:
+        df_samples = []
+        for folder in session['data']['trainval']:
+            folder = Path(folder).expanduser().resolve()
+            if not folder.is_dir():
+                raise ValueError(f'Not a directory: {folder}')
+            with open(folder / 'dataset_stats.yaml') as f:
+                max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+            df = pd.read_csv(folder / 'samples.csv', header=0)
+            df['path'] = [folder / p for p in df['path']]
+            df_samples.append(df)
 
-    for folder in session['data']['folder']:
-        folder = Path(folder).expanduser().resolve()
-        if not folder.is_dir():
-            raise ValueError(f'Not a directory: {folder}')
-        with open(folder / 'dataset_stats.yaml') as f:
-            max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
-        df = pd.read_csv(folder / 'samples.csv', header=0)
-        df['path'] = [folder / p for p in df['path']]
-        df_samples.append(df)
+        # If this session is continuing a previous session, make sure to always use the same data split
+        df_samples = pd.concat(df_samples, ignore_index=True)
+        targets = np.random.RandomState(ex['history'][0]['seed']).permutation(df_samples.target.unique())
+        df_train = df_samples[df_samples.target.isin(targets[session['data']['split']:])]
+        df_val = df_samples[df_samples.target.isin(targets[:session['data']['split']])]
+    elif session['data'].keys() == {'train', 'val'}:
+        df_train = []
+        for folder in session['data']['train']:
+            folder = Path(folder).expanduser().resolve()
+            if not folder.is_dir():
+                raise ValueError(f'Not a directory: {folder}')
+            with open(folder / 'dataset_stats.yaml') as f:
+                max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+            df = pd.read_csv(folder / 'samples.csv', header=0)
+            df['path'] = [folder / p for p in df['path']]
+            df_train.append(df)
+        df_train = pd.concat(df_train, ignore_index=True)
 
-    # If this session is continuing a previous session, make sure to always use the same data split
-    local_random = np.random.RandomState(ex['history'][0]['seed'])
-    df_samples = pd.concat(df_samples, ignore_index=True)
-    targets = local_random.permutation(df_samples.target.unique())
-    df_train = df_samples[df_samples.target.isin(targets[25:])]
-    df_val = df_samples[df_samples.target.isin(targets[:25])]
+        df_val = []
+        for folder in session['data']['val']:
+            folder = Path(folder).expanduser().resolve()
+            if not folder.is_dir():
+                raise ValueError(f'Not a directory: {folder}')
+            with open(folder / 'dataset_stats.yaml') as f:
+                max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+            df = pd.read_csv(folder / 'samples.csv', header=0)
+            df['path'] = [folder / p for p in df['path']]
+            df_val.append(df)
+        df_val = pd.concat(df_val, ignore_index=True)
+    else:
+        raise ValueError(f'Invalid data specification: {session["data"]}')
 
     if 'QUICK_RUN' in os.environ:
         print('QUICK RUN: limiting the train and val datasets to 5 targets each')
-        df_train = df_samples[df_samples.target.isin(targets[-5:])]
-        df_val = df_samples[df_samples.target.isin(targets[:5])]
+        df_train = df_train[df_train.target.isin(df_train.target.unique()[:5])]
+        df_val = df_val[df_val.target.isin(df_val.target.unique()[:5])]
 
     assert set.isdisjoint(set(df_train.target), set(df_val.target))
 
@@ -374,7 +403,7 @@ def validation_function(validator, batch):
 
     return {
         'num_samples': len(graphs),
-        'protein_names': protein_names, 
+        'protein_names': protein_names,
         'model_names': model_names,
         'targets': targets,
         'results': results,
@@ -387,7 +416,7 @@ def validation_function(validator, batch):
     }
 
 
-def session_start(trainer, session):
+def session_start(trainer: Engine, session: dict):
     session['status'] = 'RUNNING'
     session['datetime_started'] = datetime.utcnow()
 
@@ -402,11 +431,6 @@ def session_start(trainer, session):
     logger.file_writer.add_summary(session_start_summary)
 
 
-def setup_training(trainer):
-    model.train()
-    torch.set_grad_enabled(True)
-
-
 def update_samples(trainer: Engine, ex, session):
     num_samples = trainer.state.output['num_samples']
     ex['samples'] += num_samples
@@ -417,29 +441,15 @@ def update_completed_epochs(trainer, ex, session):
     ex['completed_epochs'] += 1
     session['completed_epochs'] += 1
 
+    logger.add_scalar(f'misc/epochs', ex['completed_epochs'], global_step=ex['samples'])
+    logger.add_scalar(f'misc/epochs', ex['samples'], global_step=ex['samples'])
+
 
 def save_model(trainer, model, ex, optimizer, session):
-    if session['checkpoint'] > 0 and session['completed_epochs'] % session['checkpoint'] == 0:
-        saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
-
-
-def handle_failure(engine, e, name, ex, session):
-    print(f'Exception raised during {name}, completed epochs {ex["completed_epochs"]}, samples {session["samples"]}')
-    print(e)
-
-    # Log session failure to tensorboard and to yaml
-    session['status'] = 'FAILED'
-    saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
-
-    logger.add_text('Experiment',
-                    textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
-                    ex['samples'])
-
-    session_end_summary = make_session_end_summary('FAILURE')
-    logger.file_writer.add_summary(session_end_summary)
-    logger.close()
-
-    raise e
+    if session['checkpoint'] > 0:
+        if session['completed_epochs'] % session['checkpoint'] == 0 or \
+                session['completed_epochs'] == session['max_epochs']:
+            saver.save(model, ex, optimizer, epoch=ex['completed_epochs'], samples=ex['samples'])
 
 
 trainer = Engine(training_function)
@@ -447,59 +457,59 @@ validator = Engine(validation_function)
 
 losses_avg = ProteinAverageLosses(
     lambda o: (o['loss']['local_lddt'], o['loss']['global_lddt'], o['loss']['global_gdtts'], o['num_samples']))
-losses_avg.attach(trainer)
 losses_avg.attach(validator)
 
-metrics = ProteinMetrics(itemgetter('protein_names', 'model_names', 'results', 'targets'))
-metrics.attach(trainer)
-metrics.attach(validator)
+ot = itemgetter('protein_names', 'model_names', 'results', 'targets')
+local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='Local LDDT', output_transform=ot)
+local_lddt_metrics.attach(trainer, 'local_lddt')
+local_lddt_metrics.attach(validator, 'local_lddt')
+
+global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT', output_transform=ot)
+global_lddt_metrics.attach(trainer, 'global_lddt')
+global_lddt_metrics.attach(validator, 'global_lddt')
+
+global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS', output_transform=ot)
+global_gdtts_metrics.attach(trainer, 'global_gdtts')
+global_gdtts_metrics.attach(validator, 'global_gdtts')
 
 gpu_max_memory_allocated = GpuMaxMemoryAllocated()
-gpu_max_memory_allocated.attach(trainer, 'misc/gpu')
-gpu_max_memory_allocated.attach(validator, 'misc/gpu')
+gpu_max_memory_allocated.attach(trainer, 'gpu')
+gpu_max_memory_allocated.attach(validator, 'gpu')
 
 # During training and validation, the progress bar shows the average loss over all batches processed so far
 pbar_train = ProgressBar(desc='Train')
-pbar_train.attach(trainer, metric_names=losses_avg.losses_names)
+pbar_train.attach(trainer, output_transform=lambda o: o['loss'])
 pbar_val = ProgressBar(desc='Val')
-pbar_val.attach(validator, metric_names=losses_avg.losses_names)
+pbar_val.attach(validator, output_transform=lambda o: o['loss'])
 
 
 def log_losses_batch(engine, tag):
     """Log the losses for the current batch, to be called at every iteration"""
     for name, value in engine.state.output['loss'].items():
         if name == 'total' or ex['loss'][name]['weight'] > 0:
-            logger.add_scalar(f'{tag}/loss/{name}', engine.state.output['loss'][name], global_step=session['samples'])
+            logger.add_scalar(f'{tag}/loss/{name}', engine.state.output['loss'][name], global_step=ex['samples'])
 
 
 def log_losses_avg(engine, tag):
     """Log the avg of the losses for the current epoch, to be called at the end of an epoch"""
+    for name, value in engine.state.losses.items():
+        if ex['loss'][name]['weight'] > 0:
+            logger.add_scalar(f'{tag}/loss/{name}', value, global_step=ex['samples'])
+
+
+def log_misc(engine, trainval_tag):
+    for name, value in engine.state.misc.items():
+        logger.add_scalar(f'misc/{name}/{trainval_tag}', value, global_step=ex['samples'])
+
+
+def log_metrics(engine, trainval_tag):
     for name, value in engine.state.metrics.items():
-        if name.startswith('loss/') and ex['loss'][name[5:]]['weight'] > 0:
-            logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
+        logger.add_scalar(f'{trainval_tag}/metric/{name}', value, global_step=ex['samples'])
 
 
-def log_metrics(engine, tag):
-    for name, value in engine.state.metrics.items():
-        if name.startswith('metric/'):
-            logger.add_scalar(f'{tag}/{name}', value, global_step=session['samples'])
-
-
-def log_misc(engine, tag):
-    for name, value in engine.state.metrics.items():
-        if name.startswith('misc/'):
-            logger.add_scalar(f'{name}/{tag}', value, global_step=session['samples'])
-
-
-def log_figures(engine, tag):
-    for name, fig in engine.state.metrics.items():
-        if name.startswith('fig/'):
-            logger.add_figure(f'{tag}/{name[4:]}', fig, global_step=session['samples'], close=True)
-
-
-def flush_logger(engine, logger):
-    for writer in logger.all_writers.values():
-        writer.flush()
+def log_figures(engine, trainval_tag):
+    for name, fig in engine.state.figures.items():
+        logger.add_figure(f'{trainval_tag}/{name}', fig, global_step=ex['samples'], close=True)
 
 
 def run_validation(trainer, validator, dataloader_val):
@@ -536,41 +546,33 @@ def session_end(trainer, session):
 
 
 trainer.add_event_handler(Events.STARTED, session_start, session)
-trainer.add_event_handler(Events.EPOCH_STARTED, setup_training)
+trainer.add_event_handler(Events.STARTED, customize_state)
+trainer.add_event_handler(Events.EPOCH_STARTED, setup_training, model)
 trainer.add_event_handler(Events.EXCEPTION_RAISED, handle_failure, 'training', ex, session)
 
 trainer.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, session)
 trainer.add_event_handler(Events.ITERATION_COMPLETED, log_losses_batch, 'train')
 
 trainer.add_event_handler(Events.EPOCH_COMPLETED, update_completed_epochs, ex, session)
+trainer.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'train')
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'train')
 trainer.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'train')
-trainer.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'train')
+trainer.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, session)
 trainer.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
 trainer.add_event_handler(Events.EPOCH_COMPLETED, run_validation, validator, dataloader_val)
 
 trainer.add_event_handler(Events.COMPLETED, session_end, session)
 
-
-def setup_validation(validator):
-    model.eval()
-    torch.set_grad_enabled(False)
-
-
-def update_metrics(validator, ex, session):
-    metrics = build_dict((k.split('/'), v) for k, v in validator.state.metrics.items() if k.startswith('metric/'))
-    ex['metric'] = session['metric'] = metrics['metric']
-
-
-validator.add_event_handler(Events.EPOCH_STARTED, setup_validation)
-trainer.add_event_handler(Events.EXCEPTION_RAISED, handle_failure, 'validation', ex, session)
+validator.add_event_handler(Events.STARTED, customize_state)
+validator.add_event_handler(Events.EPOCH_STARTED, setup_validation, model)
+trainer.add_event_handler(Events.EXCEPTION_RAISED, handle_failure, 'validation', ex, session, saver, logger)
 
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_losses_avg, 'val')
+validator.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_metrics, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, log_figures, 'val')
-validator.add_event_handler(Events.EPOCH_COMPLETED, log_misc, 'val')
 validator.add_event_handler(Events.EPOCH_COMPLETED, flush_logger, logger)
-validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, ex, session)
+validator.add_event_handler(Events.EPOCH_COMPLETED, update_metrics, session)
 validator.add_event_handler(Events.EPOCH_COMPLETED, save_model, model, ex, optimizer, session)
 
 trainer.run(dataloader_train, max_epochs=session['max_epochs'])

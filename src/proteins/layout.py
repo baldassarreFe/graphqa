@@ -15,23 +15,22 @@ with SummaryWriter(folder) as writer:
             'Global LDDT': ['MultiLine', ['(train|val)/loss/global_lddt']],
             'Global GDT_TS': ['MultiLine', ['(train|val)/loss/global_gdtts']],
         },
-        'Metrics Local LDDT': {
+        'Local LDDT': {
             'RMSE': ['MultiLine', ['(train|val)/metric/local_lddt/rmse']],
-            'Correlation': ['MultiLine', ['(train|val)/metric/local_lddt/correlation$']],
-            'Correlation per Model': ['MultiLine', ['(train|val)/metric/local_lddt/correlation_per_model']],
-            'R2': ['MultiLine', ['(train|val)/metric/local_lddt/r2']],
+            'Pearson': ['MultiLine', ['(train|val)/metric/local_lddt/pearson$']],
+            'Per model Pearson': ['MultiLine', ['(train|val)/metric/local_lddt/per_model_pearson']],
         },
-        'Metrics Global LDDT': {
+        'Global LDDT': {
             'RMSE': ['MultiLine', ['(train|val)/metric/global_lddt/rmse']],
-            'Correlation': ['MultiLine', ['(train|val)/metric/global_lddt/correlation$']],
-            'Correlation per Target': ['MultiLine', ['(train|val)/metric/global_lddt/correlation_per_target']],
-            'R2': ['MultiLine', ['(train|val)/metric/global_lddt/r2']],
+            'Pearson': ['MultiLine', ['(train|val)/metric/global_lddt/pearson$']],
+            'Per target Pearson': ['MultiLine', ['(train|val)/metric/global_lddt/per_target_pearson']],
+            'First Rank Loss': ['MultiLine', ['(train|val)/metric/global_lddt/first_rank_loss']],
         },
-        'Metrics Global GDT_TS': {
+        'Global GDT_TS': {
             'RMSE': ['MultiLine', ['(train|val)/metric/global_gdtts/rmse']],
-            'Correlation': ['MultiLine', ['(train|val)/metric/global_gdtts/correlation$']],
-            'Correlation per Target': ['MultiLine', ['(train|val)/metric/global_gdtts/correlation_per_target']],
-            'R2': ['MultiLine', ['(train|val)/metric/global_gdtts/r2']],
+            'Pearson': ['MultiLine', ['(train|val)/metric/global_gdtts/pearson$']],
+            'Per target Pearson': ['MultiLine', ['(train|val)/metric/global_gdtts/per_target_pearson']],
+            'First Rank Loss': ['MultiLine', ['(train|val)/metric/global_gdtts/first_rank_loss']],
         },
         
     })

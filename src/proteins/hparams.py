@@ -56,23 +56,20 @@ hparam_infos = {
 
 metric_infos = {
     'local_lddt': {
-        'r2',
         'rmse',
-        'correlation',
-        'correlation_per_model',
+        'pearson',
+        'per_model_pearson',
     },
     'global_lddt': {
-        'r2',
         'rmse',
-        'correlation',
-        'correlation_per_target',
+        'pearson',
+        'per_target_pearson',
         'first_rank_loss',
     },
     'global_gdtts': {
-        'r2',
         'rmse',
-        'correlation',
-        'correlation_per_target',
+        'pearson',
+        'per_target_pearson',
         'first_rank_loss',
     }
 }
@@ -102,7 +99,7 @@ pyaml.add_representer(type, lambda dumper, data: dumper.represent_str(data.__nam
 pyaml.print({'experiment': experiment, 'hparams': hparam_infos, 'metrics': metric_infos},
             safe=True, sort_dicts=False, force_embed=True)
 
-folder = (Path(args.folder) / 'experiment').expanduser().resolve()
+folder = (Path(args.folder) / 'hparams').expanduser().resolve()
 with SummaryWriter(folder) as writer:
     experiment_summary = make_experiment_summary(hparam_infos, metric_infos, experiment)
     writer.file_writer.add_summary(experiment_summary, walltime=int((args.datetime_created.timestamp())))

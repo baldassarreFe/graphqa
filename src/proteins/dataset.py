@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 from typing import Optional, Union
-from warnings import warn
 
 import tqdm
 import pyaml
@@ -174,7 +173,7 @@ def process_file(filepath, destpath):
 
         num_models = len(protein.names)
         if num_models <= 5:
-            warn(f'Skipping target {protein_name} with only {num_models} model(s).')
+            print(f'Skipping target {protein_name} with only {num_models} model(s).', file=sys.stderr)
             continue
 
         scores['local_lddt'].append(np.array(protein.lddt).ravel())
