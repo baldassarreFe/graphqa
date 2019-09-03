@@ -169,6 +169,8 @@ class GlobalMetrics(ignite.metrics.Metric):
     FIGURES = (
         'hist',
         'funnel',
+        'recall_at_k',
+        'ndcg_at_k',
     )
 
     def __init__(self, column, title=None, metrics=None, figures=None, output_transform=lambda x: x):
@@ -232,6 +234,47 @@ class GlobalMetrics(ignite.metrics.Metric):
         fig.tight_layout()
         return fig
 
+    @staticmethod
+    def _recall_at_k(grouped, max_k, title):
+        recall_at_k = grouped \
+            .apply(lambda g: g.sort_values('preds', ascending=False)['true'].values.argmax() + 1) \
+            .value_counts() \
+            .sort_index() \
+            .reindex(np.arange(1, max_k + 1), fill_value=0) \
+            .cumsum() / len(grouped)
+
+        fig, ax = plt.subplots(1, 1, dpi=100)
+        ax.step(recall_at_k.index.values, recall_at_k.values, where='post', alpha=.5)
+        ax.scatter(recall_at_k.index.values, recall_at_k.values, marker='.')
+        ax.set_xlabel('k')
+        ax.set_xticks(recall_at_k.index.values[1::5])
+        ax.set_yticklabels([f'{t:.0%}' for t in ax.get_yticks()])
+        ax.set_ylabel('Average Recall @ k')
+        ax.set_title(title)
+
+        return fig
+
+    @staticmethod
+    def _normalized_discounted_cumulative_gain(grouped, max_k, title):
+        def max_k_normalized_dcg(group, max_k):
+            discounts = np.log2(np.arange(2, min(len(group), max_k) + 2))
+            dcg = np.cumsum((2 ** group.nlargest(max_k, 'preds')['true'].values - 1) / discounts)
+            ideal_dcg = np.cumsum((2 ** group.nlargest(max_k, 'true')['true'].values - 1) / discounts)
+            ndcg = dcg / ideal_dcg
+            return pd.DataFrame(ndcg[None, :], columns=pd.RangeIndex(1, len(ndcg) + 1))
+
+        ave_ndcg = grouped.apply(lambda group: max_k_normalized_dcg(group, max_k=max_k)).mean(skipna=True)
+
+        fig, ax = plt.subplots(1, 1, dpi=100)
+        ax.step(ave_ndcg.index.values, ave_ndcg.values, where='post', alpha=.5)
+        ax.scatter(ave_ndcg.index.values, ave_ndcg.values, marker='.')
+        ax.set_xlabel('k')
+        ax.set_xticks(ave_ndcg.index.values)
+        ax.set_ylabel('Average nDCG @ k')
+        ax.set_title(title)
+
+        return fig
+
     def compute(self):
         metrics = {}
         figures = {}
@@ -265,6 +308,10 @@ class GlobalMetrics(ignite.metrics.Metric):
             figures['hist'] = self._hist.update(df['preds'], df['true']).compute(extra_title.strip())
         if 'funnel' in self.figures:
             figures['funnel'] = self._funnel(grouped, ncols=8)
+        if 'recall_at_k' in self.figures:
+            figures['recall_at_k'] = self._recall_at_k(grouped, max_k=25, title=self.title)
+        if 'ndcg_at_k' in self.figures:
+            figures['ndcg_at_k'] = self._normalized_discounted_cumulative_gain(grouped, max_k=10, title=self.title)
 
         return {'metrics': metrics, 'figures': figures}
 

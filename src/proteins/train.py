@@ -442,7 +442,7 @@ def update_completed_epochs(trainer, ex, session):
     session['completed_epochs'] += 1
 
     logger.add_scalar(f'misc/epochs', ex['completed_epochs'], global_step=ex['samples'])
-    logger.add_scalar(f'misc/epochs', ex['samples'], global_step=ex['samples'])
+    logger.add_scalar(f'misc/samples', ex['samples'], global_step=ex['samples'])
 
 
 def save_model(trainer, model, ex, optimizer, session):

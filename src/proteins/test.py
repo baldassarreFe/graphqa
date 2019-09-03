@@ -197,7 +197,7 @@ pbar_test.attach(tester)
 
 tester.add_event_handler(Events.STARTED, session_start, test_session)
 tester.add_event_handler(Events.STARTED, customize_state)
-tester.add_event_handler(Events.STARTED, setup_testing)
+tester.add_event_handler(Events.STARTED, setup_testing, model)
 tester.add_event_handler(Events.EXCEPTION_RAISED, handle_failure, 'testing', ex, test_session)
 
 tester.add_event_handler(Events.ITERATION_COMPLETED, update_samples, ex, test_session)
