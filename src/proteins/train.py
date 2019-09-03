@@ -124,6 +124,7 @@ session['datetime_completed'] = None
 session['git'] = git_info()
 session['cuda'] = cuda_info() if 'cuda' in session['device'] else None
 session['metric'] = {}
+session['misc'] = {}
 # 0 = no checkpoint/log, 1 = every epoch, n = every n epochs, -1 = last epoch
 session['checkpoint'] = range(0, session['max_epochs'] + 1)[session['checkpoint']]
 # session['log'] = range(0, session['max_epochs'] + 1)[session['log']]
@@ -146,10 +147,13 @@ else:
 ex['history'].append(session)
 
 # Print config so far
-sort_dict(ex, ['name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model',
-               'optimizer', 'loss', 'history'])
-sort_dict(session, ['completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
-                    'datetime_started', 'datetime_completed', 'data', 'log', 'checkpoint', 'metric', 'git', 'cuda'])
+sort_dict(ex, [
+    'name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model', 'optimizer', 'loss', 'history'
+])
+sort_dict(session, [
+    'completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
+    'datetime_started', 'datetime_completed', 'data', 'log', 'checkpoint', 'metric', 'misc', 'git', 'cuda'
+])
 pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # endregion
 
@@ -184,26 +188,21 @@ def load_optimizer(config: Mapping, model: torch.nn.Module) -> torch.optim.Optim
 
 model = load_model(ex['model']).to(session['device'])
 optimizer = load_optimizer(ex['optimizer'], model)
-if ex['completed_epochs'] > 0:  # Load latest weights and optimizer state
-    model.load_state_dict(torch.load(
-        saver.base_folder / 'model.latest.pt', map_location=session['device']))
-    optimizer.load_state_dict(torch.load(
-        saver.base_folder / 'optimizer.latest.pt', map_location=session['device']))
+if ex['completed_epochs'] > 0:
+    # Load latest weights and optimizer state
+    model.load_state_dict(torch.load(saver.base_folder / 'model.latest.pt', map_location=session['device']))
+    optimizer.load_state_dict(torch.load(saver.base_folder / 'optimizer.latest.pt', map_location=session['device']))
 else:
-    if 'state_dict' in ex['model']:  # A new experiment but using pretrained weights
-        model.load_state_dict(torch.load(
-            Path(ex['model']['state_dict']).expanduser().resolve(), map_location=session['device']))
+    session['misc']['parameters'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # A new experiment but using pretrained weights
+    if 'state_dict' in ex['model']:
+        model.load_state_dict(torch.load(Path(ex['model']['state_dict']).expanduser(), map_location=session['device']))
 
 # Logger: log experiment configuration and model parameters
 logger = SummaryWriter(saver.base_folder)
 logger.add_text('Experiment',
                 textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
                 global_step=ex['samples'])
-
-print('Parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
-if ex['samples'] == 0:
-    logger.add_scalar(
-        'misc/parameters', sum(p.numel() for p in model.parameters() if p.requires_grad), global_step=ex['samples'])
 
 
 # Datasets and dataloaders
@@ -286,6 +285,7 @@ def get_dataloaders(ex, session):
 
 
 dataloader_train, dataloader_val = get_dataloaders(ex, session)
+session['misc']['samples'] = {'train': len(dataloader_train.dataset), 'val': len(dataloader_val.dataset)}
 # endregion
 
 
@@ -309,6 +309,7 @@ def training_function(trainer, batch):
         if ex['loss']['local_lddt']['balanced']:
             loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
         loss_local_lddt = loss_local_lddt.mean()
+        assert torch.isfinite(loss_local_lddt).item()
 
     if ex['loss']['global_lddt']['weight'] > 0:
         loss_global_lddt = F.mse_loss(
@@ -318,6 +319,7 @@ def training_function(trainer, batch):
         if ex['loss']['global_lddt']['balanced']:
             loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
         loss_global_lddt = loss_global_lddt.mean()
+        assert torch.isfinite(loss_global_lddt).item()
 
     if ex['loss']['global_gdtts']['weight'] > 0:
         loss_global_gdtts = F.mse_loss(
@@ -327,10 +329,7 @@ def training_function(trainer, batch):
         if ex['loss']['global_gdtts']['balanced']:
             loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
         loss_global_gdtts = loss_global_gdtts.mean()
-
-    assert torch.isfinite(loss_local_lddt).item()
-    assert torch.isfinite(loss_global_lddt).item()
-    assert torch.isfinite(loss_global_gdtts).item()
+        assert torch.isfinite(loss_global_gdtts).item()
 
     loss_total = (
         ex['loss']['local_lddt']['weight'] * loss_local_lddt +
@@ -440,9 +439,7 @@ def update_samples(trainer: Engine, ex, session):
 def update_completed_epochs(trainer, ex, session):
     ex['completed_epochs'] += 1
     session['completed_epochs'] += 1
-
-    logger.add_scalar(f'misc/epochs', ex['completed_epochs'], global_step=ex['samples'])
-    logger.add_scalar(f'misc/samples', ex['samples'], global_step=ex['samples'])
+    trainer.state.misc['epochs'] = ex['completed_epochs']
 
 
 def save_model(trainer, model, ex, optimizer, session):

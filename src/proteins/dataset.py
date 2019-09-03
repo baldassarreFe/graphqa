@@ -66,6 +66,8 @@ class RemoveEdges(object):
 
 class RbfDistEdges(object):
     def __init__(self, sigma: float):
+        if sigma <= 0:
+            raise ValueError(f'RBF variance must be strictly positive, got {sigma}')
         self.sigma = sigma
 
     def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
@@ -343,6 +345,9 @@ def protein_model_to_graph(protein, model_idx, weights):
         ]).float()
     ).validate()
 
+    assert torch.isfinite(graph_in.node_features).all()
+    assert torch.isfinite(graph_in.edge_features).all()
+
     return protein_name, decoy_name, graph_in, graph_target
 
 
@@ -371,7 +376,7 @@ def make_edges(coords):
     # 3D coordinates in this particular model. For adjacent residues (separation = 0) we set the edge length
     # to a random value with mean and variance equal to the mean and variance of the distance between
     # adjacent residues in the whole dataset. For residues further apart (separation > 0) we leave NaN.
-    to_fill = np.logical_and(separation == 0, np.isnan(distances))
+    to_fill = (separation == 0) & (np.isnan(distances))
     distances[to_fill] = np.random.normal(5.349724573740155, 0.9130922391969375, np.count_nonzero(to_fill))
 
     edge_features = np.concatenate((
@@ -381,7 +386,7 @@ def make_edges(coords):
 
     # Distances greater that 12 Angstrom are considered irrelevant and removed unless between adjacent residues.
     with np.errstate(invalid='ignore'):
-        to_keep = np.logical_or(distances < MAX_CUTOFF_DISTANCE, separation == 0)
+        to_keep = (distances < MAX_CUTOFF_DISTANCE) | (separation == 0)
 
     return senders[to_keep], receivers[to_keep], edge_features[to_keep]
 

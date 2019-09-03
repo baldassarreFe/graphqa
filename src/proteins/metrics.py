@@ -204,7 +204,7 @@ class GlobalMetrics(ignite.metrics.Metric):
     @staticmethod
     def _funnel(grouped, ncols):
         nrows = int(np.ceil(grouped.ngroups / ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows), dpi=100)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows), dpi=100, squeeze=False)
 
         for ax, (target_name, group) in zip(axes.ravel(), grouped):
             best_true = group['true'].idxmax()

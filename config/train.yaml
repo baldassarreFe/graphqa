@@ -2,7 +2,7 @@ name: proteins
 
 data:
   cutoff: 8
-  sigma: 0
+  sigma: 20
   separation: yes
   encoding_size: 50
   encoding_base: 100
