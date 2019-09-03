@@ -160,11 +160,8 @@ pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # region Building phase
 # Random seeds (set them after the random run id is generated)
 set_seeds(session['seed'])
-
-# Saver
 saver = Saver(Path(os.environ.get('RUNS_FOLDER', './runs')).joinpath(ex['fullname']))
-if ex['completed_epochs'] == 0:
-    saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
+logger = SummaryWriter(saver.base_folder)
 
 
 # Model and optimizer
@@ -197,12 +194,6 @@ else:
     # A new experiment but using pretrained weights
     if 'state_dict' in ex['model']:
         model.load_state_dict(torch.load(Path(ex['model']['state_dict']).expanduser(), map_location=session['device']))
-
-# Logger: log experiment configuration and model parameters
-logger = SummaryWriter(saver.base_folder)
-logger.add_text('Experiment',
-                textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
-                global_step=ex['samples'])
 
 
 # Datasets and dataloaders
@@ -286,6 +277,12 @@ def get_dataloaders(ex, session):
 
 dataloader_train, dataloader_val = get_dataloaders(ex, session)
 session['misc']['samples'] = {'train': len(dataloader_train.dataset), 'val': len(dataloader_val.dataset)}
+
+if ex['completed_epochs'] == 0:
+    saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
+    logger.add_text('Experiment',
+                    textwrap.indent(pyaml.dump(ex, safe=True, sort_dicts=False, force_embed=True), '    '),
+                    global_step=ex['samples'])
 # endregion
 
 
