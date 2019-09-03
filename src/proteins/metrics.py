@@ -308,9 +308,9 @@ class GlobalMetrics(ignite.metrics.Metric):
         if 'hist' in self.figures:
             extra_title = ''
             if 'pearson' in self.metrics:
-                extra_title += f'$R {metrics["pearson"]:.3f}$ '
+                extra_title += f'$R\\ {metrics["pearson"]:.3f}$ '
             if 'per_target_pearson' in self.metrics:
-                extra_title += f'$R_{{target}} {metrics["per_target_pearson"]:.3f}$ '
+                extra_title += f'$R_{{target}}\\ {metrics["per_target_pearson"]:.3f}$ '
             figures['hist'] = self._hist.update(df['preds'], df['true']).compute(extra_title.strip())
         if 'funnel' in self.figures:
             figures['funnel'] = self._funnel(grouped, ncols=8)
