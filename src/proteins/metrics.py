@@ -209,11 +209,13 @@ class GlobalMetrics(ignite.metrics.Metric):
         for ax, (target_name, group) in zip(axes.ravel(), grouped):
             best_true = group['true'].idxmax()
             best_preds = group['preds'].idxmax()
-            ax.plot([0, 1], [0, 1], color='k', linestyle='--', linewidth=.5, zorder=1)
-            ax.scatter(data=group, x='true', y='preds', marker='.', zorder=2)
-            ax.scatter(group['true'][best_preds], group['preds'][best_preds], color='r', marker='.', zorder=3)
+            ax.plot([0, 1], [0, 1], color='gray', linestyle='--', linewidth=.5, zorder=1)
+            ax.scatter(group['true'], group['preds'], marker='.', zorder=2)
+            ax.scatter(group['true'][best_preds], group['preds'][best_preds],
+                       color='r', marker='.', zorder=3, label='Predicted')
             ax.axvline(group['true'][best_preds], color='r', linewidth=.7, zorder=3)
-            ax.scatter(group['true'][best_true], group['preds'][best_true], color='g', marker='.', zorder=4)
+            ax.scatter(group['true'][best_true], group['preds'][best_true],
+                       color='g', marker='.', zorder=4, label='True')
             ax.axvline(group['true'][best_true], color='g', linewidth=.7, zorder=4)
             ax.set_xlim(0, 1)
             ax.set_ylim(0, 1)
@@ -223,9 +225,13 @@ class GlobalMetrics(ignite.metrics.Metric):
             ax.set_title(target_name)
 
         axes[-1, 0].set_xticks([0, .5, 1.])
+        axes[-1, 0].set_xticklabels([f'{t:.1f}' for t in [0, .5, 1.]], fontdict={'fontsize': 'xx-small'})
         axes[-1, 0].set_yticks([0, .5, 1.])
-        axes[-1, 0].set_xlabel('True')
-        axes[-1, 0].set_ylabel('Predicted')
+        axes[-1, 0].set_yticklabels([f'{t:.1f}' for t in [0, .5, 1.]], fontdict={'fontsize': 'xx-small'})
+        axes[-1, 0].set_xlabel('True', fontsize='x-small')
+        axes[-1, 0].set_ylabel('Predicted', fontsize='x-small')
+        axes[-1, 0].legend(loc='upper left', fontsize='xx-small', frameon=False,
+                           handlelength=1., handletextpad=.5)
 
         # Hide unused axes
         for ax in axes.ravel()[grouped.ngroups:]:
