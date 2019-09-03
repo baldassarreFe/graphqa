@@ -253,7 +253,7 @@ class GlobalMetrics(ignite.metrics.Metric):
         ax.step(recall_at_k.index.values, recall_at_k.values, where='post', alpha=.5)
         ax.scatter(recall_at_k.index.values, recall_at_k.values, marker='.')
         ax.set_xlabel('k')
-        ax.set_xticks(recall_at_k.index.values[1::5])
+        ax.set_xticks(np.arange(0, max_k + 1, step=5 if max_k >= 10 else 1))
         ax.set_yticklabels([f'{t:.0%}' for t in ax.get_yticks()])
         ax.set_ylabel('Average Recall @ k')
         ax.set_title(title)
