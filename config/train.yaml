@@ -6,6 +6,10 @@ data:
   separation: yes
   encoding_size: 50
   encoding_base: 100
+  residues: yes
+  partial_entropy: yes
+  self_info: yes
+  dssp_features: yes
 
 optimizer:
   fn: torch.optim.Adam

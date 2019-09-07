@@ -29,7 +29,8 @@ from .utils import round_timedelta, load_model
 from .config import parse_args
 from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
-from .dataset import ProteinQualityDataset, PositionalEncoding, RemoveEdges, RbfDistEdges, SeparationEncoding
+from .dataset import ProteinQualityDataset, PositionalEncoding, SelectNodeFeatures, \
+    RemoveEdges, RbfDistEdges, SeparationEncoding
 from .metrics import customize_state, ProteinAverageLosses, LocalMetrics, GlobalMetrics, GpuMaxMemoryAllocated
 from .my_hparams import make_session_start_summary, make_session_end_summary
 from .ignite_commons import setup_training, setup_validation, update_metrics, handle_failure, flush_logger
@@ -111,7 +112,9 @@ if ex['completed_epochs'] == 0:
     if not set.isdisjoint(set(ex['model'].keys()), model_kwargs):
         raise ValueError(f'Model config dict can not have any of {model_kwargs} in its arguments, '
                          f'found: {", ".join(set.intersection(set(ex["model"].keys()), model_kwargs))}')
-ex['model']['enc_in_nodes'] = features.Input.Node.LENGTH + ex['data']['encoding_size']
+ex['model']['enc_in_nodes'] = SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
+                                                 ex['data']['self_info'], ex['data']['dssp_features']).num_features + \
+                              ex['data']['encoding_size']
 ex['model']['enc_in_edges'] = features.Input.Edge.LENGTH if ex['data']['separation'] else 2
 
 # Session computed fields
@@ -148,7 +151,8 @@ ex['history'].append(session)
 
 # Print config so far
 sort_dict(ex, [
-    'name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model', 'optimizer', 'loss', 'history'
+    'name', 'tags', 'fullname', 'comment', 'completed_epochs',
+    'samples', 'data', 'model', 'optimizer', 'loss', 'history'
 ])
 sort_dict(session, [
     'completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
@@ -251,9 +255,13 @@ def get_dataloaders(ex, session):
     assert set.isdisjoint(set(df_train.target), set(df_val.target))
 
     transforms = [
+        # Edge features (removing edges should go first)
         RemoveEdges(cutoff=ex['data']['cutoff']),
         RbfDistEdges(sigma=ex['data']['sigma']),
         SeparationEncoding(use_separation=ex['data']['separation']),
+        # Node features (selecting features should go first)
+        SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
+                           ex['data']['self_info'], ex['data']['dssp_features']),
         PositionalEncoding(encoding_size=ex['data']['encoding_size'], base=ex['data']['encoding_base'],
                            max_sequence_length=max_sequence_length)
     ]
@@ -458,11 +466,13 @@ local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='Local 
 local_lddt_metrics.attach(trainer, 'local_lddt')
 local_lddt_metrics.attach(validator, 'local_lddt')
 
-global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT', output_transform=ot)
+global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT', output_transform=ot,
+                                    figures=('hist', 'recall_at_k'))
 global_lddt_metrics.attach(trainer, 'global_lddt')
 global_lddt_metrics.attach(validator, 'global_lddt')
 
-global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS', output_transform=ot)
+global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS', output_transform=ot,
+                                     figures=('hist', 'recall_at_k'))
 global_gdtts_metrics.attach(trainer, 'global_gdtts')
 global_gdtts_metrics.attach(validator, 'global_gdtts')
 

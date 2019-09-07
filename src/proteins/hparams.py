@@ -20,6 +20,10 @@ hparam_infos = {
         'separation': {'type': bool},
         'encoding_size': {'type': int},
         'encoding_base': {'type': float},
+        'residues': {'type': str},
+        'partial_entropy': {'type': str},
+        'self_info': {'type': str},
+        'dssp_features': {'type': str},
     },
     'optimizer': {
         'fn': {'type': str},

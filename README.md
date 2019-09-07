@@ -17,9 +17,34 @@ python -m proteins.hparams ./runs
 ## Training
 ```bash
 python -m proteins.train \
-  config/train.yaml "tags=['debug']" \
-  --model config/model.yaml \ 
-  --session config/session.yaml batch_size=100 max_epochs=2
+    config/train.yaml \
+    "tags=['some','tag']" \ 
+    --data \
+      cutoff=6 \
+      separation=yes \
+      sigma=8.5 \
+      encoding_size=20 \
+      encoding_base=10000 \
+      residues=yes \
+      dssp_features=no \
+      self_info=no \
+      partial_entropy=no \
+    --model \
+      config/model.yaml \
+    --session \
+      config/session.yaml \
+      batch_size=100 \
+      max_epochs=2
+```
+
+## Ablation
+```bash
+NUM_RUNS_PER_STUDY=5
+for f in ./config/ablations/{nodes,edges}/*.yaml; do
+    for i in $(seq ${NUM_RUNS_PER_STUDY}); do
+        python -m proteins.train "${f}"
+    done
+done
 ```
 
 ## Testing

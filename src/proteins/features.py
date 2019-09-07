@@ -8,6 +8,21 @@ class Input(object):
         SELF_INFO = slice(PARTIAL_ENTROPY.stop, PARTIAL_ENTROPY.stop + 23)
         DSSP_FEATURES = slice(SELF_INFO.stop, SELF_INFO.stop + 15)
 
+        DSSP_3_STATE_OH = slice(DSSP_FEATURES.start, DSSP_FEATURES.start + 3)
+        DSSP_6_STATE_OH = slice(DSSP_3_STATE_OH.stop, DSSP_3_STATE_OH.stop + 6)
+        DSSP_SURFACE_ACCESSIBILITY = DSSP_FEATURES.start + 9
+        DSSP_PHI_SIN = DSSP_FEATURES.start + 10
+        DSSP_PHI_COS = DSSP_FEATURES.start + 11
+        DSSP_PSI_SIN = DSSP_FEATURES.start + 12
+        DSSP_PSI_COS = DSSP_FEATURES.start + 13
+        DSSP_VALID = DSSP_FEATURES.start + 14
+
+        # Missing residues in multi-sequence alignments are represented as '_'
+        AMINOACID_NAMES = tuple('ACDEFGHIKLMNOPQRSTUVWY_')
+        DSSP_3_STATE_NAMES = tuple('HEC')
+        DSSP_3_STATE_NAMES = tuple('HEC')
+        DSSP_6_STATE_NAMES = tuple('GI H E B TS C'.split())
+
         LENGTH = 83
 
     class Edge(object):

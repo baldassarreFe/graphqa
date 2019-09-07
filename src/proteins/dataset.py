@@ -36,6 +36,29 @@ class ProteinQualityDataset(torch.utils.data.Dataset):
         return sample
 
 
+class SelectNodeFeatures(object):
+    def __init__(self, residues=True, partial_entropy=True, self_info=True, dssp_features=True):
+        self.column_mask = torch.full((features.Input.Node.LENGTH,), fill_value=False, dtype=torch.bool)
+        if residues:
+            self.column_mask[features.Input.Node.RESIDUES] = True
+        if partial_entropy:
+            self.column_mask[features.Input.Node.PARTIAL_ENTROPY] = True
+        if self_info:
+            self.column_mask[features.Input.Node.SELF_INFO] = True
+        if dssp_features:
+            self.column_mask[features.Input.Node.DSSP_FEATURES] = True
+        if self.num_features == 0:
+            raise ValueError('No node features selected.')
+
+    @property
+    def num_features(self):
+        return self.column_mask.int().sum().item()
+
+    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        graph_in = graph_in.evolve(node_features=graph_in.node_features[:, self.column_mask])
+        return protein, provider, graph_in, graph_target
+
+
 class RemoveEdges(object):
     def __init__(self, cutoff: float):
         """

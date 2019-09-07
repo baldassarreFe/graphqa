@@ -2,3 +2,10 @@ max_epochs: 15
 batch_size: 500
 checkpoint: 2
 #log: 1
+data:
+  trainval:
+    - data/CASP7
+    - data/CASP8
+    - data/CASP9
+    - data/CASP10
+  split: 35

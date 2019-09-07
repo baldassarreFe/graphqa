@@ -1,0 +1,57 @@
+name: proteins
+tags:
+  - ablation
+  - edges
+  - peptide
+  - contacts
+comment: using peptide bonds and contacts (cutoff 8), distance RBF uninformative (sigma 1), no separation (only binary feature bond/contact)
+data:
+  cutoff: 8
+  sigma: 1
+  separation: false
+  encoding_size: 0
+  encoding_base: 0
+  residues: yes
+  partial_entropy: yes
+  self_info: yes
+  dssp_features: yes
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 6
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 512
+  mp_out_edges: 16
+  mp_out_nodes: 64
+  mp_out_globals: 32
+  dropout: 0.2
+  batch_norm: false
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 5
+    balanced: false
+  global_lddt:
+    name: mse
+    weight: 1
+    balanced: false
+  global_gdtts:
+    name: mse
+    weight: 5
+    balanced: false
+session:
+  max_epochs: 35
+  batch_size: 400
+  device: cuda
+  checkpoint: 2
+  data:
+    trainval:
+      - data/CASP7
+      - data/CASP8
+      - data/CASP9
+      - data/CASP10
+    split: 35
