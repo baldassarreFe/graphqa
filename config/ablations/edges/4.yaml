@@ -50,9 +50,10 @@ session:
   device: cuda
   checkpoint: 2
   data:
-    trainval:
+    train:
       - data/CASP7
       - data/CASP8
       - data/CASP9
       - data/CASP10
-    split: 35
+    val:
+      - data/CASP11
