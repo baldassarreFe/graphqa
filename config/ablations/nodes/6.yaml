@@ -6,14 +6,13 @@ tags:
   - partentr
   - selfinfo
   - dssp
-  - posemb
-comment: ablation study for node feature, using residue identity, self info, part entropy, dssp features and positional embeddings
+comment: ablation study for node feature, using residue identity, partial entropy, self info and dssp features
 data:
   cutoff: 8
   sigma: 15
   separation: true
-  encoding_size: 50
-  encoding_base: 1000
+  encoding_size: 0
+  encoding_base: 0
   residues: yes
   partial_entropy: yes
   self_info: yes

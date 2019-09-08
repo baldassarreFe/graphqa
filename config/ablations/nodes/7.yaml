@@ -3,8 +3,11 @@ tags:
   - ablation
   - nodes
   - residues
+  - partentr
+  - selfinfo
+  - dssp
   - posemb
-comment: ablation study for node feature, using residue identity and positional embeddings
+comment: ablation study for node feature, using residue identity, self info, part entropy, dssp features and positional encoding
 data:
   cutoff: 8
   sigma: 15
@@ -12,9 +15,9 @@ data:
   encoding_size: 50
   encoding_base: 1000
   residues: yes
-  partial_entropy: no
-  self_info: no
-  dssp_features: no
+  partial_entropy: yes
+  self_info: yes
+  dssp_features: yes
 model:
   fn: proteins.networks.ProteinGN
   layers: 6
