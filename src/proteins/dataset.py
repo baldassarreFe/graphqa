@@ -11,7 +11,7 @@ import torchgraphs as tg
 
 from . import features
 
-MAX_CUTOFF_DISTANCE = 12
+MAX_CUTOFF_DISTANCE = 14
 
 
 class ProteinQualityDataset(torch.utils.data.Dataset):
@@ -19,9 +19,12 @@ class ProteinQualityDataset(torch.utils.data.Dataset):
         """Load graph samples in `*.pt` format from a folder
         :param samples: a pandas dataframe with columns {'target', 'model', 'path'}
         :param transforms: transformations to apply to every sample
+
+        Graphs are expected to be stored with only half the edges (e.g. 1->2, but not 2->1),
+        the symmetric edges will be added automatically.
         """
         self.samples = samples
-        self.transforms = transforms
+        self.transforms = (*transforms, DuplicateEdges())
 
     def __len__(self):
         return len(self.samples)
@@ -65,7 +68,7 @@ class RemoveEdges(object):
         :param cutoff: the maximum distance at which non-adjacent residues should be connected,
                        passing 0 will result in simple linear graph structure
         """
-        if cutoff >= MAX_CUTOFF_DISTANCE:
+        if cutoff > MAX_CUTOFF_DISTANCE:
             from warnings import warn
             warn(f'The chosen cutoff {cutoff} is larger than the maximum distance '
                  f'saved in the dataset {MAX_CUTOFF_DISTANCE}, this transformation will not remove any edge')
@@ -84,6 +87,16 @@ class RemoveEdges(object):
                 edge_features=graph_in.edge_features[to_keep],
             )
 
+        return protein, provider, graph_in, graph_target
+
+
+class DuplicateEdges(object):
+    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        graph_in = graph_in.evolve(
+            senders=graph_in.senders.repeat(2),
+            receivers=graph_in.receivers.repeat(2),
+            edge_features=graph_in.edge_features.repeat(2, 1),
+        )
         return protein, provider, graph_in, graph_target
 
 
@@ -349,9 +362,9 @@ def protein_model_to_graph(protein, model_idx, weights):
             dssp_features,
             structure_determined[:, None] * 2 - 1
         ], axis=1)).float(),
-        senders=torch.from_numpy(np.concatenate((senders, receivers))),
-        receivers=torch.from_numpy(np.concatenate((receivers, senders))),
-        edge_features=torch.from_numpy(edge_features).repeat(2, 1).float()
+        senders=torch.from_numpy(senders),
+        receivers=torch.from_numpy(receivers),
+        edge_features=torch.from_numpy(edge_features).float()
     ).validate()
 
     graph_target = tg.Graph(
