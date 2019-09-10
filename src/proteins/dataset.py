@@ -93,8 +93,8 @@ class RemoveEdges(object):
 class DuplicateEdges(object):
     def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
         graph_in = graph_in.evolve(
-            senders=graph_in.senders.repeat(2),
-            receivers=graph_in.receivers.repeat(2),
+            senders=torch.cat((graph_in.senders, graph_in.receivers), dim=0),
+            receivers=torch.cat((graph_in.receivers, graph_in.senders), dim=0),
             edge_features=graph_in.edge_features.repeat(2, 1),
         )
         return protein, provider, graph_in, graph_target
