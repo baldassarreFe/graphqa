@@ -1,15 +1,8 @@
-# Conda autocompletion
-fpath+="${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/completions/conda-zsh-completion"
-compinit conda
-
 # Aliases
 alias jl='jupyter lab'
 alias jc='jupyter console'
 alias py='python3'
 alias tb='tensorboard --logdir'
-
-# Disable auto updates
-DISABLE_AUTO_UPDATE="true"
 
 # Force cuda to list devices in the same order as nvidia-smi
 CUDA_DEVICE_ORDER=PCI_BUS_ID

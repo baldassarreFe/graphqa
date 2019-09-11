@@ -1,8 +1,9 @@
 #!/usr/bin/zsh
 
 EXTERNAL_USER=${EXTERNAL_USER-$(whoami)}
-echo "Docker user: $(whoami)@$(hostname)"
+echo "Docker user  : $(whoami)@$(hostname)"
 echo "External user: ${EXTERNAL_USER}"
+echo "Working dir  : $(pwd)"
 
 nvidia-smi
 

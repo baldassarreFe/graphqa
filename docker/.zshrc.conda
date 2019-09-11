@@ -1,0 +1,3 @@
+# Conda autocompletion
+fpath+="${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/completions/conda-zsh-completion"
+compinit conda
