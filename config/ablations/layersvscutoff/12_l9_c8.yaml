@@ -12,9 +12,9 @@ data:
   encoding_size: 0
   encoding_base: 0
   residues: yes
-  partial_entropy: no
-  self_info: no
-  dssp_features: no
+  partial_entropy: yes
+  self_info: yes
+  dssp_features: yes
 model:
   fn: proteins.networks.ProteinGN
   layers: 9
@@ -44,8 +44,8 @@ loss:
     weight: 5
     balanced: false
 session:
-  max_epochs: 20
-  batch_size: 400
+  max_epochs: 30
+  batch_size: 200
   device: cuda
   checkpoint: -1
   data:
