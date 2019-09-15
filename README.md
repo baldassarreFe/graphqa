@@ -40,7 +40,7 @@ python -m proteins.train \
 ## Ablation
 ```bash
 NUM_RUNS_PER_STUDY=5
-for f in ./config/ablations/{nodes,edges,layersvscutoff}/*.yaml; do
+for f in ./config/ablations/{nodes,edges,layersvscutoff,architecture,localglobalscore}/*.yaml; do
     for i in $(seq ${NUM_RUNS_PER_STUDY}); do
         python -m proteins.train "${f}"
     done
