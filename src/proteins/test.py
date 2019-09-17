@@ -20,7 +20,8 @@ from ignite.contrib.handlers import ProgressBar
 from . import features
 from .config import parse_args
 from .utils import git_info, cuda_info, sort_dict, round_timedelta, load_model
-from .dataset import ProteinQualityDataset, PositionalEncoding, RemoveEdges, RbfDistEdges, SeparationEncoding
+from .dataset import ProteinQualityDataset, SelectNodeFeatures, PositionalEncoding, \
+    RemoveEdges, RbfDistEdges, SeparationEncoding
 from .metrics import customize_state, LocalMetrics, GlobalMetrics
 from .ignite_commons import setup_testing, update_metrics, save_figures
 
@@ -47,6 +48,10 @@ test_session: dict = ex['test']
 # Experiment: checks and computed fields
 if ex['model']['fn'] is None:
     raise ValueError('Model constructor function not defined')
+ex['model']['enc_in_nodes'] = SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
+                                                 ex['data']['self_info'], ex['data']['dssp_features']).num_features + \
+                              ex['data']['encoding_size']
+ex['model']['enc_in_edges'] = features.Input.Edge.LENGTH if ex['data']['separation'] else 2
 
 # Session computed fields
 test_session['samples'] = 0
@@ -61,8 +66,10 @@ if test_session['cpus'] < 0:
     raise ValueError(f'Invalid number of cpus: {test_session["cpus"]}')
 
 # Print config so far
-sort_dict(ex, ['name', 'tags', 'fullname', 'completed_epochs', 'samples', 'data', 'model',
-               'optimizer', 'loss', 'metric', 'history', 'test'])
+sort_dict(ex, [
+    'name', 'tags', 'fullname', 'comment', 'completed_epochs',
+    'samples', 'data', 'model', 'optimizer', 'loss', 'history'
+])
 sort_dict(test_session, ['data', 'batch_size', 'cpus', 'device', 'samples', 'status', 'datetime_started',
                          'datetime_completed', 'metric', 'git', 'cuda'])
 
@@ -96,9 +103,13 @@ def get_dataloader(ex, test_session):
     df['path'] = [folder / p for p in df['path']]
 
     transforms = [
+        # Edge features (removing edges should go first)
         RemoveEdges(cutoff=ex['data']['cutoff']),
         RbfDistEdges(sigma=ex['data']['sigma']),
         SeparationEncoding(use_separation=ex['data']['separation']),
+        # Node features (selecting features should go first)
+        SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
+                           ex['data']['self_info'], ex['data']['dssp_features']),
         PositionalEncoding(encoding_size=ex['data']['encoding_size'], base=ex['data']['encoding_base'],
                            max_sequence_length=max_sequence_length)
     ]
