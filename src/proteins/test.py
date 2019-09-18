@@ -46,6 +46,11 @@ test_session: dict = ex['test']
 
 
 # Experiment: checks and computed fields
+ex['data'].setdefault('residues', True)
+ex['data'].setdefault('partial_entropy', True)
+ex['data'].setdefault('self_info', True)
+ex['data'].setdefault('dssp_features', True)
+
 if ex['model']['fn'] is None:
     raise ValueError('Model constructor function not defined')
 ex['model']['enc_in_nodes'] = SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
