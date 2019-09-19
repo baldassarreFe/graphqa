@@ -39,7 +39,7 @@ loss:
     balanced: false
   global_gdtts:
     name: mse
-    weight: 0
+    weight: 1
     balanced: false
 session:
   max_epochs: 30
