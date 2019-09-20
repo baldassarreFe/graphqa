@@ -3,6 +3,7 @@ name: proteins
 tags:
   - ablation
   - layersvscutoff
+  - globalno
   - l6
   - c12
 data:
@@ -16,14 +17,12 @@ data:
   self_info: yes
   dssp_features: yes
 model:
-  fn: proteins.networks.ProteinGN
+  fn: proteins.networks.ProteinGNNoGlobal
   layers: 6
   mp_in_edges: 128
   mp_in_nodes: 512
-  mp_in_globals: 512
-  mp_out_edges: 16
-  mp_out_nodes: 64
-  mp_out_globals: 32
+  mp_out_edges: 32
+  mp_out_nodes: 128
   dropout: 0.2
   batch_norm: false
 optimizer:
