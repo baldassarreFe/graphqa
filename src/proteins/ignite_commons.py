@@ -40,7 +40,7 @@ def update_metrics(engine: Engine, session: dict):
 def save_figures(engine: Engine, output_path: pathlib.Path):
     for name, fig in engine.state.figures.items():
         name = name.replace('/', '_')
-        fig.savefig(output_path.joinpath(name).with_suffix('.pdf'))
+        fig.savefig(output_path.joinpath(name).with_suffix('.pdf'), bbox_inches='tight', pad_inches=0.01)
         plt.close(fig)
 
 

@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 from collections import defaultdict
 
 import scipy.stats
@@ -138,12 +138,12 @@ class LocalMetrics(ignite.metrics.Metric):
             metrics['per_model_pearson'] = self._per_model_pearson.compute()
 
         if 'hist' in self.figures:
-            extra_title = ''
+            extra_title = []
             if 'pearson' in self.metrics:
-                extra_title += f'$R$ {metrics["pearson"]:.3f} '
+                extra_title.append(f'$R$        {metrics["pearson"]:.3f}')
             if 'per_model_pearson' in self.metrics:
-                extra_title += f'$R_{{model}}$ {metrics["per_model_pearson"]:.3f} '
-            figures['hist'] = self._hist.compute(extra_title.strip())
+                extra_title.append(f'$R_\\mathrm{{model}}$ {metrics["per_model_pearson"]:.3f}')
+            figures['hist'] = self._hist.compute('\n'.join(extra_title))
 
         return {'metrics': metrics, 'figures': figures}
 
@@ -202,42 +202,56 @@ class GlobalMetrics(ignite.metrics.Metric):
         self._lists['true'].append(true)
 
     @staticmethod
-    def _funnel(grouped, ncols):
+    def _funnel(grouped, metric, ncols):
+        ncols = min(grouped.ngroups, ncols)
         nrows = int(np.ceil(grouped.ngroups / ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows), dpi=100, squeeze=False)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows), dpi=100, squeeze=False,
+                                 gridspec_kw={'hspace': 0.1, 'wspace': 0.005})
 
         for ax, (target_name, group) in zip(axes.ravel(), grouped):
             best_true = group['true'].idxmax()
             best_preds = group['preds'].idxmax()
             ax.plot([0, 1], [0, 1], color='gray', linestyle='--', linewidth=.5, zorder=1)
-            ax.scatter(group['true'], group['preds'], marker='.', zorder=2)
+            ax.scatter(group['true'], group['preds'], s=20, marker='.', zorder=2)
             ax.scatter(group['true'][best_preds], group['preds'][best_preds],
                        color='r', marker='.', zorder=3, label='Predicted')
-            ax.axvline(group['true'][best_preds], color='r', linewidth=.7, zorder=3)
+            ax.axvline(group['true'][best_preds], color='r', linewidth=1., zorder=3)
             ax.scatter(group['true'][best_true], group['preds'][best_true],
                        color='g', marker='.', zorder=4, label='True')
-            ax.axvline(group['true'][best_true], color='g', linewidth=.7, zorder=4)
+            ax.axvline(group['true'][best_true], color='g', linewidth=1., zorder=4)
             ax.set_xlim(0, 1)
             ax.set_ylim(0, 1)
             ax.set_aspect('equal')
             ax.set_xticks([])
             ax.set_yticks([])
-            ax.set_title(target_name)
+            ax.set_title(target_name, fontdict={'fontsize': 'small'}, pad=1)
 
-        axes[-1, 0].set_xticks([0, .5, 1.])
-        axes[-1, 0].set_xticklabels([f'{t:.1f}' for t in [0, .5, 1.]], fontdict={'fontsize': 'xx-small'})
-        axes[-1, 0].set_yticks([0, .5, 1.])
-        axes[-1, 0].set_yticklabels([f'{t:.1f}' for t in [0, .5, 1.]], fontdict={'fontsize': 'xx-small'})
-        axes[-1, 0].set_xlabel('True', fontsize='x-small')
-        axes[-1, 0].set_ylabel('Predicted', fontsize='x-small')
-        axes[-1, 0].legend(loc='upper left', fontsize='xx-small', frameon=False,
-                           handlelength=1., handletextpad=.5)
+        axes[-1, 0].set_xticks([0, .2, .4, .6, .8, 1.])
+        axes[-1, 0].set_xticklabels(['0', '', '', '', '', '1'])
+        axes[-1, 0].set_yticks([0, .2, .4, .6, .8, 1.])
+        axes[-1, 0].set_yticklabels(['0', '', '', '', '', '1'])
+        axes[-1, 0].set_xlabel(f'True', labelpad=-10)
+        axes[-1, 0].set_ylabel('Predicted', labelpad=-8)
+        legend = axes[-1, 0].legend(
+            title='Best decoy',
+            loc='upper left',
+            # title_fontsize='x-small',
+            # fontsize='x-small',
+            frameon=False,
+            handlelength=1.,
+            handletextpad=.5
+        )
+        legend._legend_box.align = 'left'
 
         # Hide unused axes
         for ax in axes.ravel()[grouped.ngroups:]:
             ax.set_visible(False)
 
-        fig.tight_layout()
+        # fig.show()
+        # import os
+        # fig.savefig(os.path.expanduser(f'~/Desktop/funnel.pdf'), bbox_inches='tight', pad_inches=0.01)
+        # fig.savefig(os.path.expanduser(f'~/Desktop/funnel.png'), bbox_inches='tight', pad_inches=0.01, dpi=300)
+
         return fig
 
     @staticmethod
@@ -250,7 +264,8 @@ class GlobalMetrics(ignite.metrics.Metric):
             .cumsum() / len(grouped)
 
         fig, ax = plt.subplots(1, 1, dpi=100)
-        ax.step(recall_at_k.index.values, recall_at_k.values, where='post', alpha=.5)
+        # ax.step(recall_at_k.index.values, recall_at_k.values, where='post', alpha=.5)
+        ax.plot(recall_at_k.index.values, recall_at_k.values, alpha=.3)
         ax.scatter(recall_at_k.index.values, recall_at_k.values, marker='.')
         ax.set_xlabel('k')
         ax.set_xticks(np.arange(0, max_k + 1, step=5 if max_k >= 10 else 1))
@@ -272,7 +287,8 @@ class GlobalMetrics(ignite.metrics.Metric):
         ave_ndcg = grouped.apply(lambda group: max_k_normalized_dcg(group, max_k=max_k)).mean(skipna=True)
 
         fig, ax = plt.subplots(1, 1, dpi=100)
-        ax.step(ave_ndcg.index.values, ave_ndcg.values, where='post', alpha=.5)
+        # ax.step(ave_ndcg.index.values, ave_ndcg.values, where='post', alpha=.5)
+        ax.plot(ave_ndcg.index.values, ave_ndcg.values, alpha=.3)
         ax.scatter(ave_ndcg.index.values, ave_ndcg.values, marker='.')
         ax.set_xlabel('k')
         ax.set_xticks(ave_ndcg.index.values)
@@ -306,14 +322,15 @@ class GlobalMetrics(ignite.metrics.Metric):
             metrics['first_rank_loss'] = grouped.apply(lambda g: first_rank_loss(g['preds'], g['true'])).mean()
 
         if 'hist' in self.figures:
-            extra_title = ''
+            extra_title = []
             if 'pearson' in self.metrics:
-                extra_title += f'$R\\ {metrics["pearson"]:.3f}$ '
+                extra_title.append(f'$R$:        {metrics["pearson"]:.3f}')
             if 'per_target_pearson' in self.metrics:
-                extra_title += f'$R_{{target}}\\ {metrics["per_target_pearson"]:.3f}$ '
-            figures['hist'] = self._hist.update(df['preds'], df['true']).compute(extra_title.strip())
+                extra_title.append(f'$R_\\mathrm{{target}}$: {metrics["per_target_pearson"]:.3f}')
+            figures['hist'] = self._hist.update(df['preds'], df['true']).compute('\n'.join(extra_title))
+
         if 'funnel' in self.figures:
-            figures['funnel'] = self._funnel(grouped, ncols=8)
+            figures['funnel'] = self._funnel(grouped, metric=self.title, ncols=6)
         if 'recall_at_k' in self.figures:
             figures['recall_at_k'] = self._recall_at_k(grouped, max_k=25, title=self.title)
         if 'ndcg_at_k' in self.figures:
@@ -349,15 +366,39 @@ class ScoreHistogram(object):
 
         return self
 
-    def compute(self, extra_title=None):
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=100)
-        ax.pcolormesh(self.bins, self.bins, self.hist.T)
+    def compute(self, extra_title: Optional[str]):
+        fig, ax = plt.subplots(1, 1, figsize=(3, 3), dpi=100)
+        ax.pcolormesh(self.bins, self.bins, self.hist.T, zorder=1)
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-        ax.set_xlabel('True')
+        ax.set_aspect('equal')
+        ax.set_xticks([0, .2, .4, .6, .8, 1.])
+        ax.set_xticklabels(['0', '', '', '', '', '1'])
+        ax.set_title(self.title)
+        ax.set_xlabel(f'True', labelpad=-10)
         ax.set_ylabel('Predicted')
-        ax.plot([0, 1], [0, 1], color='red', linestyle='--')
-        ax.set_title(' '.join(filter(lambda string: string is not None and len(string) > 0, (self.title, extra_title))))
+        ax.set_yticks([0, .2, .4, .6, .8, 1.])
+        ax.set_yticklabels(['0', '', '', '', '', '1'])
+        ax.set_ylabel('Predicted', labelpad=-8)
+        ax.plot([0, 1], [0, 1], color='red', linestyle='--', linewidth=.5, zorder=2)
+        if extra_title is not None and len(extra_title) > 0:
+            ax.text(
+                .04, .96,
+                extra_title,
+                horizontalalignment='left',
+                verticalalignment='top',
+                transform=ax.transAxes,
+                bbox={
+                    'boxstyle': 'round',
+                    'facecolor': 'white',
+                },
+            )
+
+        # fig.show()
+        # import os
+        # fig.savefig(os.path.expanduser(f'~/Desktop/{self.title}_hist.pdf'), bbox_inches='tight', pad_inches=0.01)
+        # fig.savefig(os.path.expanduser(f'~/Desktop/{self.title}_hist.png'), bbox_inches='tight', pad_inches=0.01, dpi=300)
+
         return fig
 
 
@@ -419,9 +460,9 @@ def test():
         shuffle=True, batch_size=100, collate_fn=tg.GraphBatch.collate
     )
 
-    local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='Local LDDT')
-    global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT')
-    global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS')
+    local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='LDDT')
+    global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='LDDT')
+    global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='GDT-TS')
 
     device = 'cuda'
     nodes_df = defaultdict(list)

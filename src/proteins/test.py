@@ -119,6 +119,7 @@ def get_dataloader(ex, test_session):
                            max_sequence_length=max_sequence_length)
     ]
 
+    # df = df.query('target == "T0944"')
     dataset_test = ProteinQualityDataset(df, transforms=transforms)
 
     dataloader_kwargs = dict(
@@ -198,13 +199,13 @@ def session_end(tester, test_session):
 
 tester = Engine(test_function)
 ot = itemgetter('protein_names', 'model_names', 'results', 'targets')
-local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='Local LDDT', output_transform=ot)
+local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='LDDT', output_transform=ot)
 local_lddt_metrics.attach(tester, 'local_lddt')
 
 global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT', output_transform=ot)
 global_lddt_metrics.attach(tester, 'global_lddt')
 
-global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS', output_transform=ot)
+global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='GDT-TS', output_transform=ot)
 global_gdtts_metrics.attach(tester, 'global_gdtts')
 
 # During testing, the progress bar shows the number of batches processed so far
