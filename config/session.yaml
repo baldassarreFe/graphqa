@@ -1,5 +1,5 @@
-max_epochs: 15
-batch_size: 500
+max_epochs: 35
+batch_size: 200
 checkpoint: 2
 #log: 1
 data:

@@ -1,11 +1,14 @@
 name: proteins
+comment: default configuration
+tags:
+  - default
 
 data:
   cutoff: 8
   sigma: 20
   separation: yes
-  encoding_size: 50
-  encoding_base: 100
+  encoding_size: 0
+  encoding_base: 0
   residues: yes
   partial_entropy: yes
   self_info: yes
@@ -14,18 +17,18 @@ data:
 optimizer:
   fn: torch.optim.Adam
   lr: .001
-  weight_decay: 0
+  weight_decay: 1.0e-05
 
 loss:
   local_lddt:
     name: mse
-    weight: 1
-    balanced: True
+    weight: 5
+    balanced: no
   global_lddt:
     name: mse
     weight: 1
-    balanced: True
+    balanced: no
   global_gdtts:
     name: mse
-    weight: 1
-    balanced: True
+    weight: 5
+    balanced: no

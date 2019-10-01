@@ -119,7 +119,9 @@ def get_dataloader(ex, test_session):
                            max_sequence_length=max_sequence_length)
     ]
 
-    # df = df.query('target == "T0944"')
+    # df = df.query('target == "T0944"') # Get only one funnel for the paper
+    # df = df[df.target <= 'T0812']      # Split CASP 11 funnels in two pages for the paper
+    # df = df[df.target >  'T0812']      # Split CASP 11 funnels in two pages for the paper
     dataset_test = ProteinQualityDataset(df, transforms=transforms)
 
     dataloader_kwargs = dict(

@@ -137,7 +137,7 @@ if session['seed'] is None:
     raise ValueError(f'Invalid seed: {session["seed"]}')
 if session['data'].keys() == {'trainval', 'split'}:
     if isinstance(session['data']['trainval'], str):
-        session['data']['trainval'] = session['data']['trainval'].split(':')
+        session['data']['trainval'] = [session['data']['trainval']]
     if not isinstance(session['data']['split'], int) or session['data']['split'] <= 0:
         raise ValueError(f'Invalid data split {session["data"]["split"]}')
 elif session['data'].keys() == {'train', 'val'}:

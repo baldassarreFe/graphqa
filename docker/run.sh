@@ -2,8 +2,8 @@
 
 ENTRYPOINT_PATH="${ENTRYPOINT_PATH-$(realpath ./entrypoint.sh)}"
 SOURCE_PATH="${SOURCE_PATH-$(realpath ..)}"
-DATA_PATH="${DATA_PATH-$(realpath ~/experiments/proteins/data)}"
-RUNS_PATH="${RUNS_PATH-$(realpath ~/experiments/proteins/runs)}"
+DATA_PATH="${DATA_PATH-$(realpath ../data)}"
+RUNS_PATH="${RUNS_PATH-$(realpath ../runs)}"
 
 docker run --runtime=nvidia --ipc=host --rm -it \
     --workdir='/proteins' \

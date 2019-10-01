@@ -1,10 +1,10 @@
 fn: proteins.networks.ProteinGN
-layers: 4
-mp_in_edges: 16
-mp_in_nodes: 32
-mp_in_globals: 8
-mp_out_edges: 64
-mp_out_nodes: 128
+layers: 6
+mp_in_edges: 128
+mp_in_nodes: 512
+mp_in_globals: 512
+mp_out_edges: 16
+mp_out_nodes: 64
 mp_out_globals: 32
-dropout: .5
+dropout: 0.2
 batch_norm: no
