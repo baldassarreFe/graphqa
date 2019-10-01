@@ -1,0 +1,169 @@
+name: proteins
+tags:
+- l6
+- 128-512-512
+- 16-64-32
+- dr.2
+- bnno
+- lr.001
+- wd.00001
+- llw5
+- llbno
+- co8
+- si15
+- seyes
+- eb0
+- es0
+fullname: l6_128-512-512_16-64-32_dr.2_bnno_lr.001_wd.00001_llw5_llbno_co8_si15_seyes_eb0_es0_dreamy_pare
+completed_epochs: 35
+samples: 3722775
+data:
+  cutoff: 8
+  sigma: 15
+  separation: true
+  encoding_size: 0
+  encoding_base: 0
+  residues: true
+  partial_entropy: true
+  self_info: true
+  dssp_features: true
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 6
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 512
+  mp_out_edges: 16
+  mp_out_nodes: 64
+  mp_out_globals: 32
+  dropout: 0.2
+  batch_norm: false
+  enc_in_nodes: 83
+  enc_in_edges: 8
+  state_dict: runs/l6_128-512-512_16-64-32_dr.2_bnno_lr.001_wd.00001_llw5_llbno_co8_si15_seyes_eb0_es0_dreamy_pare/model.latest.pt
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 5
+    balanced: false
+  global_lddt:
+    name: mse
+    weight: 1
+    balanced: false
+  global_gdtts:
+    name: mse
+    weight: 5
+    balanced: false
+history:
+- completed_epochs: 35
+  samples: 3722775
+  max_epochs: 35
+  batch_size: 400
+  seed: 2530
+  cpus: 8
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-09-03 12:31:30.194629
+  datetime_completed: 2019-09-03 15:52:12.613497
+  data:
+    trainval:
+    - /proteins/data/CASP7
+    - /proteins/data/CASP8
+    - /proteins/data/CASP9
+    - /proteins/data/CASP10
+    split: 35
+  checkpoint: 2
+  metric:
+    local_lddt:
+      rmse: 0.11629084317589938
+      pearson: 0.8794710817706747
+      per_model_pearson: 0.6447174071842737
+    global_lddt:
+      rmse: 0.08530548959970474
+      pearson: 0.9179936428435357
+      spearman: 0.9241068717010024
+      kendall: 0.7808406064883391
+      per_target_pearson: 0.8707809157369888
+      per_target_spearman: 0.8200788097534404
+      per_target_kendall: 0.6578033586387033
+      first_rank_loss: 0.037257147686822076
+    global_gdtts:
+      rmse: 0.10669251531362534
+      pearson: 0.9205419756736148
+      spearman: 0.9200193865968053
+      kendall: 0.7594099741068182
+      per_target_pearson: 0.9033711278087022
+      per_target_spearman: 0.7696673175581664
+      per_target_kendall: 0.6048242157412872
+      first_rank_loss: 0.04294571621077401
+  misc:
+    parameters: 1448035
+    samples:
+      train: 106365
+      val: 9215
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: d29e4d762b56e9c75fd4f5ebb483ee506796c815
+    dirty: false
+  cuda:
+    driver: '410.93'
+    devices:
+      cuda:0:
+        model: GeForce GTX 1080 Ti
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 11178 MiB
+        memory_used_max: 2623 MiB
+        memory_cached_max: 10963 MiB
+test:
+  data:
+    input: data/CASP8
+    output: results/allfeatures/CASP8
+  batch_size: 200
+  cpus: 11
+  device: cuda
+  samples: 34789
+  status: COMPLETED
+  datetime_started: 2019-10-01 11:00:54.490025
+  datetime_completed: 2019-10-01 11:02:42.113550
+  metric:
+    local_lddt:
+      rmse: 0.09650958391536792
+      pearson: 0.9175266784618092
+      per_model_pearson: 0.7518090673644056
+    global_lddt:
+      rmse: 0.06558827310800552
+      pearson: 0.9526063229611055
+      spearman: 0.9560836788336021
+      kendall: 0.8438072491396683
+      per_target_pearson: 0.8961971482615905
+      per_target_spearman: 0.8665833804571403
+      per_target_kendall: 0.7165792057642848
+      first_rank_loss: 0.026137705586972784
+    global_gdtts:
+      rmse: 0.045863207429647446
+      pearson: 0.9830199667871171
+      spearman: 0.9819027500063446
+      kendall: 0.8887083641682144
+      per_target_pearson: 0.9506607849604299
+      per_target_spearman: 0.8447214362095291
+      per_target_kendall: 0.6876865384222571
+      first_rank_loss: 0.0390885232901964
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: fd830217e41332b88f6dd40ee7e40951be124b8f
+    dirty: false
+  cuda:
+    driver: '418.43'
+    devices:
+      cuda:0:
+        model: GeForce GTX 1050 Ti with Max-Q Design
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 4042 MiB
+        memory_used_max: 1964 MiB
+        memory_cached_max: 3695 MiB
