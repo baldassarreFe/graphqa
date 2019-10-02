@@ -1,0 +1,274 @@
+AsReportedBy,Method,TrainValSets,TestSet,Output,Metric,Value
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,R per target,0.535
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,ρ per target,0.425
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,τ per target,0.325
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.064
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,R per target,0.421
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,ρ per target,0.409
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,τ per target,0.288
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.064
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 12,Global GDT_TS,R per target,0.607
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 12,Global GDT_TS,First Rank Loss,0.146
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 12,Global GDT_TS,ρ per target,0.521
+3D CNN,3D CNN,CASP 7+8+9+10,CASP 12,Global GDT_TS,τ per target,0.381
+3D CNN,3D CNN,CASP 7+8+9+10,CAMEO,Global GDT_TS,R per target,0.586
+3D CNN,3D CNN,CASP 7+8+9+10,CAMEO,Global GDT_TS,First Rank Loss,0.060
+3D CNN,3D CNN,CASP 7+8+9+10,CAMEO,Global GDT_TS,ρ per target,0.532
+3D CNN,3D CNN,CASP 7+8+9+10,CAMEO,Global GDT_TS,τ per target,0.426
+3D CNN,3D CNN,CASP 7+8+9+10,3DRobot,Global GDT_TS,R per target,0.856
+3D CNN,3D CNN,CASP 7+8+9+10,3DRobot,Global GDT_TS,First Rank Loss,0.083
+3D CNN,3D CNN,CASP 7+8+9+10,3DRobot,Global GDT_TS,ρ per target,0.839
+3D CNN,3D CNN,CASP 7+8+9+10,3DRobot,Global GDT_TS,τ per target,0.652
+
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,R per target,0.755
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.046
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,ρ per target,0.673
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,τ per target,0.529
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,R per target,0.452
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.066
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,ρ per target,0.433
+3D CNN,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,τ per target,0.307
+3D CNN,ProQ3D,CASP 9+10,CASP 12,Global GDT_TS,R per target,0.609
+3D CNN,ProQ3D,CASP 9+10,CASP 12,Global GDT_TS,First Rank Loss,0.164
+3D CNN,ProQ3D,CASP 9+10,CASP 12,Global GDT_TS,ρ per target,0.602
+3D CNN,ProQ3D,CASP 9+10,CASP 12,Global GDT_TS,τ per target,0.451
+
+
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,R per target,0.729
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.064
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,ρ per target,0.604
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,τ per target,0.468
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,R per target,0.437
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.072
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,ρ per target,0.422
+3D CNN,ProQ2D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,τ per target,0.299
+3D CNN,ProQ2D,CASP 9+10,CASP 12,Global GDT_TS,R per target,0.619
+3D CNN,ProQ2D,CASP 9+10,CASP 12,Global GDT_TS,First Rank Loss,0.151
+3D CNN,ProQ2D,CASP 9+10,CASP 12,Global GDT_TS,ρ per target,0.607
+3D CNN,ProQ2D,CASP 9+10,CASP 12,Global GDT_TS,τ per target,0.453
+
+3D CNN,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,R per target,0.637
+3D CNN,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.087
+3D CNN,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,ρ per target,0.521
+3D CNN,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,τ per target,0.394
+3D CNN,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,R per target,0.457
+3D CNN,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.063
+3D CNN,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,ρ per target,0.499
+3D CNN,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,τ per target,0.321
+3D CNN,VoroMQA,PDB,CASP 12,Global GDT_TS,R per target,0.557
+3D CNN,VoroMQA,PDB,CASP 12,Global GDT_TS,First Rank Loss,0.161
+3D CNN,VoroMQA,PDB,CASP 12,Global GDT_TS,ρ per target,0.515
+3D CNN,VoroMQA,PDB,CASP 12,Global GDT_TS,τ per target,0.380
+3D CNN,VoroMQA,PDB,CAMEO,Global GDT_TS,R per target,0.456
+3D CNN,VoroMQA,PDB,CAMEO,Global GDT_TS,First Rank Loss,0.099
+3D CNN,VoroMQA,PDB,CAMEO,Global GDT_TS,ρ per target,0.427
+3D CNN,VoroMQA,PDB,CAMEO,Global GDT_TS,τ per target,0.346
+3D CNN,VoroMQA,PDB,3DRobot,Global GDT_TS,R per target,0.891
+3D CNN,VoroMQA,PDB,3DRobot,Global GDT_TS,First Rank Loss,0.038
+3D CNN,VoroMQA,PDB,3DRobot,Global GDT_TS,ρ per target,0.859
+3D CNN,VoroMQA,PDB,3DRobot,Global GDT_TS,τ per target,0.678
+
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,R per target,0.512
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.122
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,ρ per target,0.402
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,τ per target,0.303
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,R per target,0.206
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.089
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,ρ per target,0.248
+3D CNN,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,τ per target,0.176
+3D CNN,RWplus,CASP 7+8,CASP 12,Global GDT_TS,R per target,0.313
+3D CNN,RWplus,CASP 7+8,CASP 12,Global GDT_TS,First Rank Loss,0.192
+3D CNN,RWplus,CASP 7+8,CASP 12,Global GDT_TS,ρ per target,0.355
+3D CNN,RWplus,CASP 7+8,CASP 12,Global GDT_TS,τ per target,0.257
+3D CNN,RWplus,CASP 7+8,CAMEO,Global GDT_TS,R per target,0.122
+3D CNN,RWplus,CASP 7+8,CAMEO,Global GDT_TS,First Rank Loss,0.162
+3D CNN,RWplus,CASP 7+8,CAMEO,Global GDT_TS,ρ per target,0.095
+3D CNN,RWplus,CASP 7+8,CAMEO,Global GDT_TS,τ per target,0.068
+3D CNN,RWplus,CASP 7+8,3DRobot,Global GDT_TS,R per target,0.844
+3D CNN,RWplus,CASP 7+8,3DRobot,Global GDT_TS,First Rank Loss,0.076
+3D CNN,RWplus,CASP 7+8,3DRobot,Global GDT_TS,ρ per target,0.829
+3D CNN,RWplus,CASP 7+8,3DRobot,Global GDT_TS,τ per target,0.651
+
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,R per target,0.465
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.077
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,R,0.635
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,ρ,0.634
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,τ,0.440
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,ρ per target,0.372
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 1,Global GDT_TS,τ per target,0.275
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,R per target,0.386
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.055
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,R,0.637
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,ρ,0.673
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,τ,0.475
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,ρ per target,0.371
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 11 stage 2,Global GDT_TS,τ per target,0.259
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,R per target,0.566
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,First Rank Loss,0.113
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,R,0.551
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,ρ,0.484
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,τ,0.339
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,ρ per target,0.504
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 1,Global GDT_TS,τ per target,0.374
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,R per target,0.491
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,First Rank Loss,0.072
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,R,0.670
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,ρ,0.657
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,τ,0.472
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,ρ per target,0.458
+Ornate,Ornate,CASP 7+8+9+10 (stage 2),CASP 12 stage 2,Global GDT_TS,τ per target,0.322
+
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,R per target,0.691
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.066
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,R,0.795
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,ρ,0.782
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,τ,0.580
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,ρ per target,0.606
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 1,Global GDT_TS,τ per target,0.462
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,R per target,0.444
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.053
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,R,0.772
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,ρ,0.796
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,τ,0.594
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,ρ per target,0.432
+Ornate,ProQ3D,CASP 9+10,CASP 11 stage 2,Global GDT_TS,τ per target,0.304
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,R per target,0.705
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,First Rank Loss,0.086
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,R,0.671
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,ρ,0.478
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,τ,0.335
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,ρ per target,0.636
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 1,Global GDT_TS,τ per target,0.482
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,R per target,0.600
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,First Rank Loss,0.060
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,R,0.806
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,ρ,0.800
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,τ,0.601
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,ρ per target,0.540
+Ornate,ProQ3D,CASP 9+10,CASP 12 stage 2,Global GDT_TS,τ per target,0.388
+
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,R per target,0.442
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.104
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,R,0.532
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,ρ,0.614
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,τ,0.437
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,ρ per target,0.369
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 1,Global GDT_TS,τ per target,0.280
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,R per target,0.375
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.074
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,R,0.629
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,ρ,0.655
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,τ,0.433
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,ρ per target,0.363
+Ornate,3D CNN,CASP 7+8+9+10,CASP 11 stage 2,Global GDT_TS,τ per target,0.254
+
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,R per target,0.617
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.085
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,R,0.689
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,ρ,0.682
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,τ,0.483
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,ρ per target,0.482
+Ornate,VoroMQA,PDB,CASP 11 stage 1,Global GDT_TS,τ per target,0.361
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,R per target,0.419
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.066
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,R,0.651
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,ρ,0.688
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,τ,0.505
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,ρ per target,0.412
+Ornate,VoroMQA,PDB,CASP 11 stage 2,Global GDT_TS,τ per target,0.291
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,R per target,0.611
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,First Rank Loss,0.085
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,R,0.456
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,ρ,0.381
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,τ,0.263
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,ρ per target,0.554
+Ornate,VoroMQA,PDB,CASP 12 stage 1,Global GDT_TS,τ per target,0.414
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,R per target,0.559
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,First Rank Loss,0.106
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,R,0.605
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,ρ,0.604
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,τ,0.445
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,ρ per target,0.501
+Ornate,VoroMQA,PDB,CASP 12 stage 2,Global GDT_TS,τ per target,0.362
+
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,R per target,0.467
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,First Rank Loss,0.128
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,R,0.080
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,ρ,0.003
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,τ,-0.016
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,ρ per target,0.371
+Ornate,RWplus,CASP 7+8,CASP 11 stage 1,Global GDT_TS,τ per target,0.274
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,R per target,0.167
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,First Rank Loss,0.088
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,R,0.056
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,ρ,0.033
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,τ,0.011
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,ρ per target,0.192
+Ornate,RWplus,CASP 7+8,CASP 11 stage 2,Global GDT_TS,τ per target,0.137
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,R per target,0.479
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,First Rank Loss,0.132
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,R,-0.272
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,ρ,-0.538
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,τ,-0.381
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,ρ per target,0.465
+Ornate,RWplus,CASP 7+8,CASP 12 stage 1,Global GDT_TS,τ per target,0.344
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,R per target,0.417
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,First Rank Loss,0.103
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,R,-0.096
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,ρ,-0.096
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,τ,-0.067
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,ρ per target,0.378
+Ornate,RWplus,CASP 7+8,CASP 12 stage 2,Global GDT_TS,τ per target,0.265
+
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12,Global GDT_TS,R,0.651
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12,Global GDT_TS,R per target,0.439
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12,Global GDT_TS,First Rank Loss,0.138
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12 stage 1,Global GDT_TS,R per target,0.502
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12 stage 1,Global GDT_TS,First Rank Loss,0.148
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12 stage 2,Global GDT_TS,R per target,0.377
+AngularQA,AngularQA,3DRobot + CASP 9+10+11+12,CASP 12 stage 2,Global GDT_TS,First Rank Loss,0.128
+
+AngularQA,ProQ3,CASP 9+10,CASP 12 stage 1,Global GDT_TS,R per target,0.638
+AngularQA,ProQ3,CASP 9+10,CASP 12 stage 1,Global GDT_TS,First Rank Loss,0.048
+AngularQA,ProQ3,CASP 9+10,CASP 12 stage 2,Global GDT_TS,R per target,0.616
+AngularQA,ProQ3,CASP 9+10,CASP 12 stage 2,Global GDT_TS,First Rank Loss,0.068
+
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Local LDDT,R per model,0.56
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Local LDDT,R,0.77
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Local LDDT,RMSE,0.147
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Global LDDT,R per target,0.90
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Global LDDT,First Rank Loss,0.022
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Global LDDT,R,0.91
+ProQ4,ProQ4,CASP 9+10+11,CASP 11,Global LDDT,RMSE,0.085
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Local LDDT,R per model,0.56
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Local LDDT,R,0.65
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Local LDDT,RMSE,0.201
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Global LDDT,R per target,0.84
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Global LDDT,First Rank Loss,0.023
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Global LDDT,R,0.82
+ProQ4,ProQ4,CASP 9+10+11,CAMEO,Global LDDT,RMSE,0.156
+
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Local LDDT,R per model,0.61
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Local LDDT,R,0.84
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Local LDDT,RMSE,0.125
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Global LDDT,R per target,0.82
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Global LDDT,First Rank Loss,0.040
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Global LDDT,R,0.90
+ProQ4,ProQ3D,CASP 9+10,CASP 11,Global LDDT,RMSE,0.085
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Local LDDT,R per model,0.64
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Local LDDT,R,0.79
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Local LDDT,RMSE,0.137
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Global LDDT,R per target,0.80
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Global LDDT,First Rank Loss,0.021
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Global LDDT,R,0.88
+ProQ4,ProQ3D,CASP 9+10,CAMEO,Global LDDT,RMSE,0.093
+
+Ours,ProQ4,CASP 9+10,CASP 12,Local LDDT,R per model,0.516
+Ours,ProQ4,CASP 9+10,CASP 12,Local LDDT,R,0.772
+Ours,ProQ4,CASP 9+10,CASP 12,Local LDDT,ρ per model,0.498
+Ours,ProQ4,CASP 9+10,CASP 12,Local LDDT,ρ,0.776
+Ours,ProQ4,CASP 9+10,CASP 12,Global LDDT,R per target,0.8839
+Ours,ProQ4,CASP 9+10,CASP 12,Global LDDT,First Rank Loss,0.0485
+Ours,ProQ4,CASP 9+10,CASP 12,Global LDDT,R,0.892
+Ours,ProQ4,CASP 9+10,CASP 12,Global LDDT,ρ per target,0.9203
+Ours,ProQ4,CASP 9+10,CASP 12,Global LDDT,ρ,0.898
