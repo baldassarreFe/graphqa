@@ -1,0 +1,122 @@
+name: proteins
+tags:
+- residueonly
+- l6
+- 128-512-512
+- 16-64-32
+- dr.2
+- bnno
+- lr.001
+- wd.00001
+- llw5
+- llbno
+- co6
+- si15
+- seyes
+- eb0
+- es0
+fullname: residueonly_l6_128-512-512_16-64-32_dr.2_bnno_lr.001_wd.00001_llw5_llbno_co6_si15_seyes_eb0_es0_brave_edison
+comment: Residue encoding one-hot only, no MSE and no DSSP
+completed_epochs: 35
+samples: 3721130
+data:
+  cutoff: 6
+  sigma: 15
+  separation: true
+  encoding_size: 0
+  encoding_base: 0
+  residues: true
+  partial_entropy: false
+  self_info: false
+  dssp_features: false
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 6
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 512
+  mp_out_edges: 16
+  mp_out_nodes: 64
+  mp_out_globals: 32
+  dropout: 0.2
+  batch_norm: false
+  enc_in_nodes: 22
+  enc_in_edges: 8
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 5
+    balanced: false
+  global_lddt:
+    name: mse
+    weight: 1
+    balanced: false
+  global_gdtts:
+    name: mse
+    weight: 5
+    balanced: false
+history:
+- completed_epochs: 35
+  samples: 3721130
+  max_epochs: 35
+  batch_size: 400
+  seed: 4580
+  cpus: 8
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-09-17 08:44:14.385307
+  datetime_completed: 2019-09-17 11:06:36.447961
+  data:
+    trainval:
+    - /proteins/data/CASP7
+    - /proteins/data/CASP8
+    - /proteins/data/CASP9
+    - /proteins/data/CASP10
+    split: 35
+  checkpoint: 2
+  metric:
+    local_lddt:
+      rmse: 0.15371731062494387
+      pearson: 0.7665665943019507
+      per_model_pearson: 0.48457102419257236
+    global_lddt:
+      rmse: 0.12439441680908203
+      pearson: 0.7920307608921018
+      spearman: 0.7695169855537658
+      kendall: 0.5755186810838188
+      per_target_pearson: 0.6909129364486356
+      per_target_spearman: 0.6524512587415922
+      per_target_kendall: 0.4857139160544974
+      first_rank_loss: 0.06263142441000258
+    global_gdtts:
+      rmse: 0.155995711684227
+      pearson: 0.7866587165116503
+      spearman: 0.7570782800698226
+      kendall: 0.5555608592123413
+      per_target_pearson: 0.7138389952082731
+      per_target_spearman: 0.6092310653728317
+      per_target_kendall: 0.4478672857847877
+      first_rank_loss: 0.09693714678287506
+  misc:
+    parameters: 1432419
+    samples:
+      train: 106318
+      val: 9262
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: 79bcff2e3e22ef813bb54fd6f53f8b310773d67c
+    dirty: false
+  cuda:
+    driver: '410.93'
+    devices:
+      cuda:0:
+        model: GeForce GTX 1080 Ti
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 11178 MiB
+        memory_used_max: 1652 MiB
+        memory_cached_max: 8021 MiB

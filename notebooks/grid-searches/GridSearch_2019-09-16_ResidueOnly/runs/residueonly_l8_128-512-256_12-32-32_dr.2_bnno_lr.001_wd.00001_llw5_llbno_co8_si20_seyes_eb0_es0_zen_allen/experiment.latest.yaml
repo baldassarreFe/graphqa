@@ -1,0 +1,122 @@
+name: proteins
+tags:
+- residueonly
+- l8
+- 128-512-256
+- 12-32-32
+- dr.2
+- bnno
+- lr.001
+- wd.00001
+- llw5
+- llbno
+- co8
+- si20
+- seyes
+- eb0
+- es0
+fullname: residueonly_l8_128-512-256_12-32-32_dr.2_bnno_lr.001_wd.00001_llw5_llbno_co8_si20_seyes_eb0_es0_zen_allen
+comment: Residue encoding one-hot only, no MSE and no DSSP
+completed_epochs: 35
+samples: 3721515
+data:
+  cutoff: 8
+  sigma: 20
+  separation: true
+  encoding_size: 0
+  encoding_base: 0
+  residues: true
+  partial_entropy: false
+  self_info: false
+  dssp_features: false
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 8
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 256
+  mp_out_edges: 12
+  mp_out_nodes: 32
+  mp_out_globals: 32
+  dropout: 0.2
+  batch_norm: false
+  enc_in_nodes: 22
+  enc_in_edges: 8
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 5
+    balanced: false
+  global_lddt:
+    name: mse
+    weight: 1
+    balanced: false
+  global_gdtts:
+    name: mse
+    weight: 5
+    balanced: false
+history:
+- completed_epochs: 35
+  samples: 3721515
+  max_epochs: 35
+  batch_size: 400
+  seed: 105
+  cpus: 8
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-09-17 23:51:02.606337
+  datetime_completed: 2019-09-18 02:02:06.034672
+  data:
+    trainval:
+    - /proteins/data/CASP7
+    - /proteins/data/CASP8
+    - /proteins/data/CASP9
+    - /proteins/data/CASP10
+    split: 35
+  checkpoint: 2
+  metric:
+    local_lddt:
+      rmse: 0.15263662467616995
+      pearson: 0.7407775898688723
+      per_model_pearson: 0.48798190188298546
+    global_lddt:
+      rmse: 0.119989775121212
+      pearson: 0.7740262538028181
+      spearman: 0.7818436631130484
+      kendall: 0.5894144142505681
+      per_target_pearson: 0.6717192553015329
+      per_target_spearman: 0.6144596675399101
+      per_target_kendall: 0.4587858449143546
+      first_rank_loss: 0.05717428752354213
+    global_gdtts:
+      rmse: 0.1767752319574356
+      pearson: 0.708250020012695
+      spearman: 0.6943854817147338
+      kendall: 0.5143302223268934
+      per_target_pearson: 0.6982096573629128
+      per_target_spearman: 0.570974173294033
+      per_target_kendall: 0.41853217008543636
+      first_rank_loss: 0.09600856942789895
+  misc:
+    parameters: 1281839
+    samples:
+      train: 106329
+      val: 9251
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: 1b28a78262d45d4428211401f25e05016a8e8c92
+    dirty: false
+  cuda:
+    driver: '410.93'
+    devices:
+      cuda:0:
+        model: GeForce RTX 2080 Ti
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 10989 MiB
+        memory_used_max: 4304 MiB
+        memory_cached_max: 10454 MiB

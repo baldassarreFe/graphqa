@@ -1,0 +1,117 @@
+name: proteins
+tags:
+- l10
+- 128-512-256
+- 12-32-32
+- dr.1
+- bnno
+- lr0.01
+- wd.00001
+- llw5
+- llbno
+- co8
+- si6
+- seyes
+- eb100
+- es50
+fullname: l10_128-512-256_12-32-32_dr.1_bnno_lr0.01_wd.00001_llw5_llbno_co8_si6_seyes_eb100_es50_condescending_jones
+completed_epochs: 40
+samples: 2299000
+data:
+  cutoff: 8
+  sigma: 6
+  separation: true
+  encoding_size: 50
+  encoding_base: 100
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 10
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 256
+  mp_out_edges: 12
+  mp_out_nodes: 32
+  mp_out_globals: 32
+  dropout: 0.1
+  batch_norm: false
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.01
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 5
+    balanced: false
+  global_lddt:
+    name: mse
+    weight: 1
+    balanced: false
+  global_gdtts:
+    name: mse
+    weight: 1
+    balanced: false
+metric:
+  local_lddt:
+    r2: 0.6210572283254219
+    rmse: 0.14180704568067543
+    correlation: 0.7912808590664745
+    correlation_per_model: 0.48435134556948634
+  global_lddt:
+    r2: 0.7365514286077417
+    rmse: 0.09971536613362181
+    correlation: 0.8683749149442406
+    correlation_per_target: 0.7631765562382294
+    first_rank_loss: 0.057766263204884816
+  global_gdtts:
+    r2: 0.6585370652392586
+    rmse: 0.17094420361094761
+    correlation: 0.8201911088806085
+    correlation_per_target: 0.5483509324010525
+    first_rank_loss: 0.11767182795398207
+history:
+- completed_epochs: 40
+  samples: 2299000
+  max_epochs: 40
+  batch_size: 400
+  seed: 94
+  cpus: 8
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-08-21 10:18:08.677845
+  datetime_completed: 2019-08-21 12:27:15.737089
+  log:
+  - every batch
+  checkpoint: -1
+  metric:
+    local_lddt:
+      r2: 0.6210572283254219
+      rmse: 0.14180704568067543
+      correlation: 0.7912808590664745
+      correlation_per_model: 0.48435134556948634
+    global_lddt:
+      r2: 0.7365514286077417
+      rmse: 0.09971536613362181
+      correlation: 0.8683749149442406
+      correlation_per_target: 0.7631765562382294
+      first_rank_loss: 0.057766263204884816
+    global_gdtts:
+      r2: 0.6585370652392586
+      rmse: 0.17094420361094761
+      correlation: 0.8201911088806085
+      correlation_per_target: 0.5483509324010525
+      first_rank_loss: 0.11767182795398207
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: 116efa95bc1c0c63840f8cebafdd8e0254201918
+    dirty: false
+  cuda:
+    driver: '410.93'
+    devices:
+      cuda:0:
+        model: GeForce RTX 2080 Ti
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 10989 MiB
+        memory_used_max: 3669 MiB
+        memory_cached_max: 10615 MiB
