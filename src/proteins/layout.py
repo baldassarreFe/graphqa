@@ -20,12 +20,6 @@ with SummaryWriter(folder) as writer:
             'Pearson': ['MultiLine', ['(train|val)/metric/local_lddt/pearson$']],
             'Per model Pearson': ['MultiLine', ['(train|val)/metric/local_lddt/per_model_pearson']],
         },
-        'Global LDDT': {
-            'RMSE': ['MultiLine', ['(train|val)/metric/global_lddt/rmse']],
-            'Pearson': ['MultiLine', ['(train|val)/metric/global_lddt/pearson$']],
-            'Per target Pearson': ['MultiLine', ['(train|val)/metric/global_lddt/per_target_pearson']],
-            'First Rank Loss': ['MultiLine', ['(train|val)/metric/global_lddt/first_rank_loss']],
-        },
         'Global GDT_TS': {
             'RMSE': ['MultiLine', ['(train|val)/metric/global_gdtts/rmse']],
             'Pearson': ['MultiLine', ['(train|val)/metric/global_gdtts/pearson$']],

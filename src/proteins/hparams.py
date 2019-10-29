@@ -16,14 +16,9 @@ args = parser.parse_args()
 hparam_infos = {
     'data': {
         'cutoff': {'type': float},
-        'sigma': {'type': float},
-        'separation': {'type': bool},
-        'encoding_size': {'type': int},
-        'encoding_base': {'type': float},
-        'residues': {'type': str},
-        'partial_entropy': {'type': str},
-        'self_info': {'type': str},
-        'dssp_features': {'type': str},
+        'partial_entropy': {'type': bool},
+        'self_information': {'type': bool},
+        'dssp': {'type': bool},
     },
     'optimizer': {
         'fn': {'type': str},
@@ -38,23 +33,21 @@ hparam_infos = {
         'mp_out_edges': {'type': int},
         'mp_out_nodes': {'type': int},
         'mp_out_globals': {'type': int},
+        'min_dist': {'type': float},
+        'max_dist': {'type': float},
+        'rbf_size': {'type': int},
+        'residue_emb_size': {'type': int},
+        'separation_enc': {'type': bool},
         'dropout': {'type': float},
         'batch_norm': {'type': bool},
     },
     'loss/local_lddt': {
         'name': {'type': str},
         'weight': {'type': float},
-        'balanced': {'type': bool},
-    },
-    'loss/global_lddt': {
-        'name': {'type': str},
-        'weight': {'type': float},
-        'balanced': {'type': bool},
     },
     'loss/global_gdtts': {
         'name': {'type': str},
         'weight': {'type': float},
-        'balanced': {'type': bool},
     }
 }
 
@@ -63,12 +56,6 @@ metric_infos = {
         'rmse',
         'pearson',
         'per_model_pearson',
-    },
-    'global_lddt': {
-        'rmse',
-        'pearson',
-        'per_target_pearson',
-        'first_rank_loss',
     },
     'global_gdtts': {
         'rmse',
