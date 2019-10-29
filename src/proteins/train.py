@@ -4,6 +4,7 @@ import pyaml
 import random
 import inspect
 import textwrap
+import itertools
 import multiprocessing
 
 from typing import Mapping
@@ -12,25 +13,23 @@ from datetime import datetime
 from operator import itemgetter
 
 import numpy as np
-import pandas as pd
 import namesgenerator
 
 import torch
 import torch.utils.data
 import torch.nn.functional as F
-import torchgraphs as tg
 from tensorboardX import SummaryWriter
 
 from ignite.engine import Engine, Events
 from ignite.contrib.handlers import ProgressBar
 
 from . import features
+from .data import DecoyBatch
 from .utils import round_timedelta, load_model
 from .config import parse_args
 from .saver import Saver
 from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
-from .dataset import ProteinQualityDataset, PositionalEncoding, SelectNodeFeatures, \
-    RemoveEdges, RbfDistEdges, SeparationEncoding
+from .dataset import ProteinQualityTarget
 from .metrics import customize_state, ProteinAverageLosses, LocalMetrics, GlobalMetrics, GpuMaxMemoryAllocated
 from .my_hparams import make_session_start_summary, make_session_end_summary
 from .ignite_commons import setup_training, setup_validation, update_metrics, handle_failure, flush_logger
@@ -46,7 +45,6 @@ ex = parse_args(config={
     'optimizer': {},
     'loss': {
         'local_lddt': {},
-        'global_lddt': {},
         'global_gdtts': {},
     },
     'history': [],
@@ -112,13 +110,18 @@ if ex['completed_epochs'] == 0:
     if not set.isdisjoint(set(ex['model'].keys()), model_kwargs):
         raise ValueError(f'Model config dict can not have any of {model_kwargs} in its arguments, '
                          f'found: {", ".join(set.intersection(set(ex["model"].keys()), model_kwargs))}')
-ex['model']['enc_in_nodes'] = SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
-                                                 ex['data']['self_info'], ex['data']['dssp_features']).num_features + \
-                              ex['data']['encoding_size']
-ex['model']['enc_in_edges'] = features.Input.Edge.LENGTH if ex['data']['separation'] else 2
+ex['model']['enc_in_nodes'] = sum((
+    ex['model']['residue_emb_size'],
+    23 if ex['data']['partial_entropy'] else 0,
+    23 if ex['data']['self_information'] else 0,
+    15 if ex['data']['dssp'] else 0,
+))
+ex['model']['enc_in_edges'] = sum((
+    ex['model']['rbf_size'],
+    7 if ex['model']['separation_enc'] else 0,
+))
 
 # Session computed fields
-# ex['history'].append(session)  # do it here or when all epochs are done?
 session['completed_epochs'] = 0
 session['samples'] = 0
 session['status'] = 'NEW'
@@ -135,12 +138,12 @@ if session['cpus'] < 0:
     raise ValueError(f'Invalid number of cpus: {session["cpus"]}')
 if session['seed'] is None:
     raise ValueError(f'Invalid seed: {session["seed"]}')
-if session['data'].keys() == {'trainval', 'split'}:
+if session['data'].keys() == {'in_memory', 'trainval', 'split'}:
     if isinstance(session['data']['trainval'], str):
         session['data']['trainval'] = [session['data']['trainval']]
     if not isinstance(session['data']['split'], int) or session['data']['split'] <= 0:
         raise ValueError(f'Invalid data split {session["data"]["split"]}')
-elif session['data'].keys() == {'train', 'val'}:
+elif session['data'].keys() == {'in_memory', 'train', 'val'}:
     if isinstance(session['data']['train'], str):
         session['data']['train'] = session['data']['train'].split(':')
     if isinstance(session['data']['val'], str):
@@ -202,81 +205,75 @@ else:
 
 # Datasets and dataloaders
 def get_dataloaders(ex, session):
+    node_features = [k for k in ('partial_entropy', 'self_information', 'dssp') if ex['data'][k]]
+    cutoff = ex['data']['cutoff']
+
     max_sequence_length = 0
-    if session['data'].keys() == {'trainval', 'split'}:
-        df_samples = []
+    if session['data'].keys() == {'in_memory', 'trainval', 'split'}:
+        targets = []
         for folder in session['data']['trainval']:
             folder = Path(folder).expanduser().resolve()
             if not folder.is_dir():
                 raise ValueError(f'Not a directory: {folder}')
             with open(folder / 'dataset_stats.yaml') as f:
                 max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
-            df = pd.read_csv(folder / 'samples.csv', header=0)
-            df['path'] = [folder / p for p in df['path']]
-            df_samples.append(df)
+            for target in sorted(folder.glob('*.npz')):
+                targets.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
 
         # If this session is continuing a previous session, make sure to always use the same data split
-        df_samples = pd.concat(df_samples, ignore_index=True)
-        targets = np.random.RandomState(ex['history'][0]['seed']).permutation(df_samples.target.unique())
-        df_train = df_samples[df_samples.target.isin(targets[session['data']['split']:])]
-        df_val = df_samples[df_samples.target.isin(targets[:session['data']['split']])]
-    elif session['data'].keys() == {'train', 'val'}:
-        df_train = []
+        # Doing np.random.permutation(targets) takes forever, maybe related to
+        # the fact that ProteinQualityTarget defines __len__, but.... ???
+        targets_split = np.random.RandomState(ex['history'][0]['seed']).permutation(len(targets))
+        targets_train = [targets[i] for i in targets_split[session['data']['split']:]]
+        targets_val = [targets[i] for i in targets_split[:session['data']['split']]]
+    elif session['data'].keys() == {'in_memory', 'train', 'val'}:
+        targets_train = []
         for folder in session['data']['train']:
             folder = Path(folder).expanduser().resolve()
             if not folder.is_dir():
                 raise ValueError(f'Not a directory: {folder}')
             with open(folder / 'dataset_stats.yaml') as f:
                 max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
-            df = pd.read_csv(folder / 'samples.csv', header=0)
-            df['path'] = [folder / p for p in df['path']]
-            df_train.append(df)
-        df_train = pd.concat(df_train, ignore_index=True)
+            for target in folder.glob('*.npz'):
+                targets_train.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
 
-        df_val = []
+        targets_val = []
         for folder in session['data']['val']:
             folder = Path(folder).expanduser().resolve()
             if not folder.is_dir():
                 raise ValueError(f'Not a directory: {folder}')
             with open(folder / 'dataset_stats.yaml') as f:
                 max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
-            df = pd.read_csv(folder / 'samples.csv', header=0)
-            df['path'] = [folder / p for p in df['path']]
-            df_val.append(df)
-        df_val = pd.concat(df_val, ignore_index=True)
+            for target in folder.glob('*.npz'):
+                targets_val.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
     else:
         raise ValueError(f'Invalid data specification: {session["data"]}')
 
     if 'QUICK_RUN' in os.environ:
         print('QUICK RUN: limiting the train and val datasets to 5 targets each')
-        df_train = df_train[df_train.target.isin(df_train.target.unique()[:5])]
-        df_val = df_val[df_val.target.isin(df_val.target.unique()[:5])]
+        targets_train = targets_train[:5]
+        targets_val = targets_val[:5]
 
-    assert set.isdisjoint(set(df_train.target), set(df_val.target))
+    if not set.isdisjoint(set(targets_train), set(targets_val)):
+        raise ValueError("Found duplicate targets in train and val splits:",
+                         *list(set.intersection(set(targets_train), set(targets_val))))
 
-    transforms = [
-        # Edge features (removing edges should go first)
-        RemoveEdges(cutoff=ex['data']['cutoff']),
-        RbfDistEdges(sigma=ex['data']['sigma']),
-        SeparationEncoding(use_separation=ex['data']['separation']),
-        # Node features (selecting features should go first)
-        SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
-                           ex['data']['self_info'], ex['data']['dssp_features']),
-        PositionalEncoding(encoding_size=ex['data']['encoding_size'], base=ex['data']['encoding_base'],
-                           max_sequence_length=max_sequence_length)
-    ]
+    if session['data']['in_memory']:
+        for target in itertools.chain(targets_train, targets_val):
+            target.load_eager()
 
-    dataset_train = ProteinQualityDataset(df_train, transforms=transforms)
-    dataset_val = ProteinQualityDataset(df_val, transforms=transforms)
+    dataset_train = torch.utils.data.ConcatDataset(targets_train)
+    dataset_val = torch.utils.data.ConcatDataset(targets_val)
 
     dataloader_kwargs = dict(
         num_workers=session['cpus'],
         pin_memory='cuda' in session['device'],
         worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed()) % (2 ** 32 - 1)),
         batch_size=session['batch_size'],
-        collate_fn=tg.GraphBatch.collate,
+        collate_fn=DecoyBatch.collate,
     )
 
+    # TODO implement target-based sampler
     dataloader_train = torch.utils.data.DataLoader(dataset_train, shuffle=True, **dataloader_kwargs)
     dataloader_val = torch.utils.data.DataLoader(dataset_val, shuffle=False, **dataloader_kwargs)
 
@@ -296,49 +293,31 @@ if ex['completed_epochs'] == 0:
 
 # region Training
 def training_function(trainer, batch):
-    protein_names, model_names, graphs, targets = batch
-    graphs = graphs.to(session['device'])
-    targets = targets.to(session['device'])
-    results = model(graphs)
+    batch = batch.to(session['device'])
+    results = model(batch)
 
     loss_local_lddt = torch.tensor(0., device=session['device'])
-    loss_global_lddt = torch.tensor(0., device=session['device'])
     loss_global_gdtts = torch.tensor(0., device=session['device'])
 
     if ex['loss']['local_lddt']['weight'] > 0:
-        node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
+        node_mask = torch.isfinite(batch.lddt)
         loss_local_lddt = F.mse_loss(
             results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
-            targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
+            batch.lddt[node_mask], reduction='none'
         )
-        if ex['loss']['local_lddt']['balanced']:
-            loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
         loss_local_lddt = loss_local_lddt.mean()
         assert torch.isfinite(loss_local_lddt).item()
-
-    if ex['loss']['global_lddt']['weight'] > 0:
-        loss_global_lddt = F.mse_loss(
-            results.global_features[:, features.Output.Global.GLOBAL_LDDT],
-            targets.global_features[:, features.Output.Global.GLOBAL_LDDT], reduction='none'
-        )
-        if ex['loss']['global_lddt']['balanced']:
-            loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
-        loss_global_lddt = loss_global_lddt.mean()
-        assert torch.isfinite(loss_global_lddt).item()
 
     if ex['loss']['global_gdtts']['weight'] > 0:
         loss_global_gdtts = F.mse_loss(
             results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
-            targets.global_features[:, features.Output.Global.GLOBAL_GDTTS], reduction='none'
+            batch.gdtts, reduction='none'
         )
-        if ex['loss']['global_gdtts']['balanced']:
-            loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
         loss_global_gdtts = loss_global_gdtts.mean()
         assert torch.isfinite(loss_global_gdtts).item()
 
     loss_total = (
         ex['loss']['local_lddt']['weight'] * loss_local_lddt +
-        ex['loss']['global_lddt']['weight'] * loss_global_lddt +
         ex['loss']['global_gdtts']['weight'] * loss_global_gdtts
     )
 
@@ -347,74 +326,49 @@ def training_function(trainer, batch):
     optimizer.step(closure=None)
 
     return {
-        'num_samples': len(graphs),
-        'protein_names': protein_names,
-        'model_names': model_names,
-        'targets': targets,
+        'num_samples': len(batch),
         'results': results,
         'loss': {
             'total': loss_total.item(),
             'local_lddt': loss_local_lddt.item(),
-            'global_lddt': loss_global_lddt.item(),
             'global_gdtts': loss_global_gdtts.item(),
         },
     }
 
 
 def validation_function(validator, batch):
-    protein_names, model_names, graphs, targets = batch
-    graphs = graphs.to(session['device'])
-    targets = targets.to(session['device'])
-    results = model(graphs)
+    batch = batch.to(session['device'])
+    results = model(batch)
 
     loss_local_lddt = torch.tensor(0.)
-    loss_global_lddt = torch.tensor(0.)
     loss_global_gdtts = torch.tensor(0.)
 
     if ex['loss']['local_lddt']['weight'] > 0:
-        node_mask = torch.isfinite(targets.node_features[:, features.Output.Node.LOCAL_LDDT])
+        node_mask = torch.isfinite(batch.lddt)
         loss_local_lddt = F.mse_loss(
             results.node_features[node_mask, features.Output.Node.LOCAL_LDDT],
-            targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT], reduction='none'
+            batch.lddt[node_mask], reduction='none'
         )
-        if ex['loss']['local_lddt']['balanced']:
-            loss_local_lddt = loss_local_lddt * targets.node_features[node_mask, features.Output.Node.LOCAL_LDDT_WEIGHT]
         loss_local_lddt = loss_local_lddt.mean()
-
-    if ex['loss']['global_lddt']['weight'] > 0:
-        loss_global_lddt = F.mse_loss(
-            results.global_features[:, features.Output.Global.GLOBAL_LDDT],
-            targets.global_features[:, features.Output.Global.GLOBAL_LDDT], reduction='none'
-        )
-        if ex['loss']['global_lddt']['balanced']:
-            loss_global_lddt = loss_global_lddt * targets.global_features[:, features.Output.Global.GLOBAL_LDDT_WEIGHT]
-        loss_global_lddt = loss_global_lddt.mean()
 
     if ex['loss']['global_gdtts']['weight'] > 0:
         loss_global_gdtts = F.mse_loss(
             results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
-            targets.global_features[:, features.Output.Global.GLOBAL_GDTTS], reduction='none'
+            batch.gdtts, reduction='none'
         )
-        if ex['loss']['global_gdtts']['balanced']:
-            loss_global_gdtts = loss_global_gdtts * targets.global_features[:, features.Output.Global.GLOBAL_GDTTS_WEIGHT]
         loss_global_gdtts = loss_global_gdtts.mean()
 
     loss_total = (
         ex['loss']['local_lddt']['weight'] * loss_local_lddt +
-        ex['loss']['global_lddt']['weight'] * loss_global_lddt +
         ex['loss']['global_gdtts']['weight'] * loss_global_gdtts
     )
 
     return {
-        'num_samples': len(graphs),
-        'protein_names': protein_names,
-        'model_names': model_names,
-        'targets': targets,
+        'num_samples': len(batch),
         'results': results,
         'loss': {
             'total': loss_total.item(),
             'local_lddt': loss_local_lddt.item(),
-            'global_lddt': loss_global_lddt.item(),
             'global_gdtts': loss_global_gdtts.item(),
         },
     }
@@ -429,7 +383,6 @@ def session_start(trainer: Engine, session: dict):
         **{f'optimizer/{k}': v for k, v in ex['optimizer'].items()},
         **{f'model/{k}': v for k, v in ex['model'].items()},
         **{f'loss/local_lddt/{k}': v for k, v in ex['loss']['local_lddt'].items()},
-        **{f'loss/global_lddt/{k}': v for k, v in ex['loss']['global_lddt'].items()},
         **{f'loss/global_gdtts/{k}': v for k, v in ex['loss']['global_gdtts'].items()},
     })
     logger.file_writer.add_summary(session_start_summary)
@@ -458,18 +411,13 @@ trainer = Engine(training_function)
 validator = Engine(validation_function)
 
 losses_avg = ProteinAverageLosses(
-    lambda o: (o['loss']['local_lddt'], o['loss']['global_lddt'], o['loss']['global_gdtts'], o['num_samples']))
+    lambda o: (o['loss']['local_lddt'], o['loss']['global_gdtts'], o['num_samples']))
 losses_avg.attach(validator)
 
-ot = itemgetter('protein_names', 'model_names', 'results', 'targets')
+ot = itemgetter('results')
 local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='Local LDDT', output_transform=ot)
 local_lddt_metrics.attach(trainer, 'local_lddt')
 local_lddt_metrics.attach(validator, 'local_lddt')
-
-global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT', output_transform=ot,
-                                    figures=('hist', 'recall_at_k'))
-global_lddt_metrics.attach(trainer, 'global_lddt')
-global_lddt_metrics.attach(validator, 'global_lddt')
 
 global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS', output_transform=ot,
                                      figures=('hist', 'recall_at_k'))

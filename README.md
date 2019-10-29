@@ -17,7 +17,7 @@ Download and preprocess the data:
 ```bash
 data/download-datasets.sh
 for f in data/*.h5; do
-    python -m proteins.dataset preprocess --filepath "${f}" --destpath "${f%.h5}" 
+    python -m proteins.dataset preprocess --filepath "${f}" --destpath "${f%.h5}" [--compress]
 done
 ```
 
@@ -30,32 +30,40 @@ python -m proteins.hparams runs/
 ## Training
 Either train with a predefined configuration
 ```bash
-python -m proteins.train config/train.yaml --model config/model.yaml --session config/session.yaml
+python -m proteins.train config/train.yaml --model config/model.yaml --session config/session.yaml [in_memory=yes]
 ```
 
 Or define all parameters manually
 ```bash
 # Data
 cutoff=8
-sigma=15
-separation=yes
+partial_entropy=yes
+self_information=yes
+dssp=yes
 
 # Model
+model_fn=proteins.networks.ProteinGN
 layers=6
-dropout=.2
-batch_norm=no
+min_dist=0
+max_dist=20
+rbf_size=16
+residue_emb_size=32
+separation_enc=yes
 mp_in_edges=128
 mp_in_nodes=512
 mp_in_globals=512
 mp_out_edges=16
 mp_out_nodes=64
 mp_out_globals=32
+dropout=.2
+batch_norm=no
 
 # Losses
 loss_local_lddt=5
 loss_global_gdtts=5
 
 # Optimizer
+opt_fn=torch.optim.Adam
 learning_rate=.001
 weight_decay=.00001
 
@@ -76,27 +84,28 @@ tags+=("wd${weight_decay}")
 tags+=("ll${loss_local_lddt}")
 tags+=("lg${loss_global_gdtts}")
 tags+=("co${cutoff}")
-tags+=("si${sigma}")
-tags+=("se${separation}")
+tags+=("res${residue_emb_size}")
+tags+=("rbf${rbf_size}")
+tags+=("sep${separation_enc}")
 tags="[$(IFS=, ; echo "${tags[*]}")]"
 
 python -m proteins.train \
     tags="${tags}" \
     --data \
         cutoff="${cutoff}" \
-        sigma="${sigma}" \
-        separation="${separation}" \
-        encoding_size=0 \
-        encoding_base=0 \
-        residues=yes \
-        partial_entropy=no \
-        self_info=no \
-        dssp_features=no \
+        partial_entropy=${partial_entropy} \
+        self_information=${self_information} \
+        dssp=${dssp} \
     --model \
-        fn=proteins.networks.ProteinGN \
+        fn=${model_fn} \
         layers="${layers}" \
         dropout="${dropout}" \
         batch_norm="${batch_norm}" \
+        min_dist="${min_dist}" \
+        max_dist="${max_dist}" \
+        rbf_size="${rbf_size}" \
+        residue_emb_size="${residue_emb_size}" \
+        separation_enc="${separation_enc}" \
         mp_in_edges="${mp_in_edges}" \
         mp_in_nodes="${mp_in_nodes}" \
         mp_in_globals="${mp_in_globals}" \
@@ -106,22 +115,18 @@ python -m proteins.train \
     --loss.local_lddt \
         name=mse \
         weight="${loss_local_lddt}" \
-        balanced=no \
-    --loss.global_lddt \
-        name=mse \
-        weight=0 \
-        balanced=no \
     --loss.global_gdtts \
         name=mse \
         weight="${loss_global_gdtts}" \
-        balanced=no \
     --optimizer \
-        fn=torch.optim.Adam \
+        fn=${opt_fn} \
         lr="${learning_rate}" \
         weight_decay="${weight_decay}" \
+    --session.data \
+        trainval="${datasets}" \
+        split=35 \
+        in_memory=yes \
     --session \
-        data.trainval="${datasets}" \
-        data.split=35 \
         cpus=8 \
         checkpoint=2 \
         max_epochs="${max_epochs}" \

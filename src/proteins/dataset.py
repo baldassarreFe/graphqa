@@ -1,185 +1,110 @@
 import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import tqdm
 import pyaml
 import numpy as np
 import pandas as pd
 import torch.utils.data
-import torchgraphs as tg
 
-from . import features
+from proteins.data import Decoy
 
 MAX_CUTOFF_DISTANCE = 14
 
 
-class ProteinQualityDataset(torch.utils.data.Dataset):
-    def __init__(self, samples: pd.DataFrame, transforms=()):
-        """Load graph samples in `*.pt` format from a folder
-        :param samples: a pandas dataframe with columns {'target', 'model', 'path'}
-        :param transforms: transformations to apply to every sample
-
-        Graphs are expected to be stored with only half the edges (e.g. 1->2, but not 2->1),
-        the symmetric edges will be added automatically.
+class ProteinQualityTarget(torch.utils.data.Dataset):
+    def __init__(self, path: Union[str, Path], *,
+                 node_features=('partial_entropy', 'self_information', 'dssp'),
+                 cutoff=MAX_CUTOFF_DISTANCE):
         """
-        self.samples = samples
-        self.transforms = (*transforms, DuplicateEdges())
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, item):
-        path = self.samples.path.iloc[item]
-        sample = torch.load(path)  # type: (str, str, tg.Graph, tg.Graph)
-
-        for t in self.transforms:
-            sample = t(*sample)
-
-        return sample
-
-
-class SelectNodeFeatures(object):
-    def __init__(self, residues=True, partial_entropy=True, self_info=True, dssp_features=True):
-        self.column_mask = torch.full((features.Input.Node.LENGTH,), fill_value=False, dtype=torch.bool)
-        if residues:
-            self.column_mask[features.Input.Node.RESIDUES] = True
-        if partial_entropy:
-            self.column_mask[features.Input.Node.PARTIAL_ENTROPY] = True
-        if self_info:
-            self.column_mask[features.Input.Node.SELF_INFO] = True
-        if dssp_features:
-            self.column_mask[features.Input.Node.DSSP_FEATURES] = True
-        if self.num_features == 0:
-            raise ValueError('No node features selected.')
-
-    @property
-    def num_features(self):
-        return self.column_mask.int().sum().item()
-
-    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
-        graph_in = graph_in.evolve(node_features=graph_in.node_features[:, self.column_mask])
-        return protein, provider, graph_in, graph_target
-
-
-class RemoveEdges(object):
-    def __init__(self, cutoff: float):
-        """
+        :param node_features: which node features to load, all by default [partial_entropy, self_information, dssp]
         :param cutoff: the maximum distance at which non-adjacent residues should be connected,
                        passing 0 will result in simple linear graph structure
         """
-        if cutoff > MAX_CUTOFF_DISTANCE:
+        self.path = Path(path).expanduser().resolve()
+        self.node_features = set(node_features)
+        self.cutoff = cutoff
+        self._target = None
+
+        if self.cutoff > MAX_CUTOFF_DISTANCE:
             from warnings import warn
             warn(f'The chosen cutoff {cutoff} is larger than the maximum distance '
                  f'saved in the dataset {MAX_CUTOFF_DISTANCE}, this transformation will not remove any edge')
-        self.cutoff = cutoff
 
-    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
+        with np.load(self.path, allow_pickle=True) as target:
+            self.target_name = target['target_name'].item()
+            self.num_decoys = len(target['decoy_names'])
+
+    def load_eager(self):
+        # Read the whole NpzFile into dict to avoid crc checks every time a field is accessed
+        # If the dataloader uses forking, call this before forking to share the data at zero cost
+        self._target = dict(np.load(self.path, allow_pickle=True))
+
+    @property
+    def target(self):
+        # The file will be accessed lazily after forking to avoid concurrency issues
+        if self._target is None:
+            self._target = np.load(self.path, allow_pickle=True)
+        return self._target
+
+    def __len__(self):
+        return self.num_decoys
+
+    def __getitem__(self, decoy_idx):
+        if len(self.node_features) > 0:
+            node_features = []
+            if 'partial_entropy' in self.node_features:
+                node_features.append(self.target['partial_entropy'])
+            if 'self_information' in self.node_features:
+                node_features.append(self.target['self_information'])
+            if 'dssp' in self.node_features:
+                node_features.append(self.target['dssp'][decoy_idx])
+            node_features = torch.from_numpy(np.concatenate(node_features, axis=1))
+        else:
+            node_features = torch.empty(len(self.target['residues']), 0)
+
+        distances = self.target['distances'][decoy_idx]
+        senders = self.target['senders'][decoy_idx]
+        receivers = self.target['receivers'][decoy_idx]
+
         # Remove edges between non-adjacent residues with distance greater than cutoff
         if self.cutoff < MAX_CUTOFF_DISTANCE:
-            distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
-            is_peptide_bond = graph_in.edge_features[:, features.Input.Edge.IS_PEPTIDE_BOND]
-            to_keep = (is_peptide_bond > 0) | (distances < self.cutoff)
+            is_peptide_bond = (receivers - senders) == 1
+            to_keep = is_peptide_bond | (distances < self.cutoff)
+            distances = distances[to_keep]
+            senders = senders[to_keep]
+            receivers = receivers[to_keep]
 
-            graph_in = graph_in.evolve(
-                senders=graph_in.senders[to_keep],
-                receivers=graph_in.receivers[to_keep],
-                edge_features=graph_in.edge_features[to_keep],
-            )
-
-        return protein, provider, graph_in, graph_target
-
-
-class DuplicateEdges(object):
-    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
-        graph_in = graph_in.evolve(
-            senders=torch.cat((graph_in.senders, graph_in.receivers), dim=0),
-            receivers=torch.cat((graph_in.receivers, graph_in.senders), dim=0),
-            edge_features=graph_in.edge_features.repeat(2, 1),
-        )
-        return protein, provider, graph_in, graph_target
-
-
-class RbfDistEdges(object):
-    def __init__(self, sigma: float):
-        if sigma <= 0:
-            raise ValueError(f'RBF variance must be strictly positive, got {sigma}')
-        self.sigma = sigma
-
-    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
-        # Distances are encoded using a 0-centered RBF with variance sigma
-        distances = graph_in.edge_features[:, features.Input.Edge.SPATIAL_DISTANCE]
-        distances_rbf = torch.exp(- distances ** 2 / (2 * self.sigma))
-
-        graph_in = graph_in.evolve(
-            edge_features=torch.cat((
-                distances_rbf[:, None],
-                graph_in.edge_features[:, features.Input.Edge.SEPARATION_OH]
-            ), dim=1),
+        decoy = Decoy(
+            target_name=self.target['target_name'].item(),
+            decoy_name=self.target['decoy_names'][decoy_idx],
+            residues=torch.from_numpy(self.target['residues']),
+            node_features=node_features,
+            edge_features=torch.empty(len(senders), 0),
+            distances=torch.from_numpy(distances),
+            senders=torch.from_numpy(senders),
+            receivers=torch.from_numpy(receivers),
+            lddt=torch.from_numpy(self.target['lddt'][decoy_idx]),
+            gdtts=torch.tensor([self.target['gdtts'][decoy_idx]]),
         )
 
-        return protein, provider, graph_in, graph_target
+        return decoy
+
+    def __hash__(self):
+        return hash(self.path)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.path.with_suffix("").name})'
+
+    def __getstate__(self):
+        # Not used: if the multiprocessing context is "fork" the dataloader is not pickled,
+        # but shared with a copy-on-write mechanism
+        print('getstate', {k for k, v in self.__dict__.items() if k != '_target'})
+        return {k: v for k, v in self.__dict__.items() if k != '_target'}
 
 
-class SeparationEncoding(object):
-    def __init__(self, use_separation: bool):
-        self.use_separation = use_separation
-
-    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
-        if not self.use_separation:
-            feature_columns = [features.Input.Edge.SPATIAL_DISTANCE, features.Input.Edge.IS_PEPTIDE_BOND]
-            graph_in = graph_in.evolve(
-                edge_features=graph_in.edge_features[:, feature_columns]
-            )
-
-        return protein, provider, graph_in, graph_target
-
-
-class PositionalEncoding(object):
-    def __init__(self, encoding_size, max_sequence_length, base, device='cpu'):
-        self.encoding_size = encoding_size
-        self.max_sequence_length = max_sequence_length
-        self.base = base
-
-        if self.encoding_size != 0 and base is not None:
-            self.encoding = self.make_encoding(encoding_size, max_sequence_length, base, device)
-
-    def __call__(self, protein: str, provider: str, graph_in: tg.Graph, graph_target: tg.Graph):
-        if self.encoding_size == 0:
-            return protein, provider, graph_in, graph_target
-
-        graph_in = graph_in.evolve(node_features=torch.cat((
-            graph_in.node_features,
-            self.encoding[:graph_in.num_nodes, :]
-        ), dim=1))
-        return protein, provider, graph_in, graph_target
-
-    @staticmethod
-    def make_encoding(encoding_size: int, len_sequence: int, base: float = 10000,
-                      device: Optional[Union[str, torch.device]] = 'cpu'):
-        """Prepare a positional encoding of shape (len_sequence, dim_encoding)
-
-        Args:
-            encoding_size:
-            len_sequence:
-            base:
-            device:
-
-        Returns:
-
-        """
-        # sequence_pos, encoding_idx have both shape (len_sequence, dim_encoding)
-        sequence_pos, encoding_idx = torch.meshgrid(
-            torch.arange(len_sequence, device=device, dtype=torch.float),
-            torch.arange(encoding_size, device=device, dtype=torch.float)
-        )
-        enc = torch.empty(len_sequence, encoding_size, device=device)
-        enc[:, 0::2] = torch.sin(sequence_pos[:, 0::2] / (base ** (2 * encoding_idx[:, 0::2] / encoding_size)))
-        enc[:, 1::2] = torch.cos(sequence_pos[:, 1::2] / (base ** (2 * encoding_idx[:, 1::2] / encoding_size)))
-        return enc
-
-
-def process_file(filepath, destpath):
+def process_file(filepath: Union[str, Path], destpath: Union[str, Path], compress: bool):
     import tables
 
     filepath = Path(filepath).expanduser().resolve()
@@ -189,206 +114,178 @@ def process_file(filepath, destpath):
     destpath.mkdir(parents=True, exist_ok=False)
 
     scores = {
-        'local_lddt': [],
-        'local_sscore': [],
-        'global_lddt': [],
-        'global_gdtts': [],
-        'global_gdtts_ha': [],
-        'global_rmsd': [],
-        'global_maxsub': [],
+        'local': {
+            'lddt': [],
+            # 'sscore': [],
+        },
+        'global': {
+            'gdtts': [],
+            # 'gdtts_ha': [],
+            # 'rmsd': [],
+            # 'maxsub': [],
+        }
     }
+
     sequence_lengths = []
-    protein_count = 0
-    model_count = 0
+    dataset_index = {
+        'target': [],
+        'decoy': [],
+        'path': [],
+        'index': [],
+    }
 
     # First pass: enumerate proteins, count models, prepare frequency stats
-    proteins = []
-    for protein in h5_file.list_nodes('/'):
+    for protein in tqdm.tqdm(h5_file.list_nodes('/'), desc='Targets ', unit='t', leave=False):
+        target_name = protein._v_name
+
         # I'm not sure why the file contains these nodes, but they are not proteins for sure
-        protein_name = protein._v_name
-        if protein_name.startswith(('casp', 'cameo')):
+        if target_name.startswith(('casp', 'cameo')):
             continue
 
-        num_models = len(protein.names)
-        if num_models <= 5:
-            print(f'Skipping target {protein_name} with only {num_models} model(s).', file=sys.stderr)
+        if len(protein.names) <= 5:
+            tqdm.tqdm.write(f'[{target_name}] Skipping target with {len(protein.names)} model(s).', file=sys.stderr)
             continue
 
-        if np.any(np.isnan(protein.lddt_global)):
-            print(f'Skipping target {protein_name} with {np.count_nonzero(np.isnan(protein.lddt_global))}/'
-                  f'{len(protein.lddt_global)} missing global LDDT scores.', file=sys.stderr)
+        if len(protein.seq[0]) <= 50:
+            tqdm.tqdm.write(f'[{target_name}] Skipping target with length {len(protein.seq[0])}.', file=sys.stderr)
             continue
 
-        if np.any(np.isnan(protein.gdt_ts)):
-            print(f'Skipping target {protein_name} with {np.count_nonzero(np.isnan(protein.lddt_global))}/'
-                  f'{len(protein.lddt_global)} missing global GDT_TS scores.', file=sys.stderr)
-            continue
-
-        scores['local_lddt'].append(np.array(protein.lddt).ravel())
-        scores['local_sscore'].append(np.array(protein.s_scores).ravel())
-        scores['global_lddt'].append(np.array(protein.lddt_global))
-        scores['global_gdtts'].append(np.array(protein.gdt_ts))
-        scores['global_gdtts_ha'].append(np.array(protein.gdt_ts_ha))
-        scores['global_rmsd'].append(np.array(protein.rmsd))
-        scores['global_maxsub'].append(np.array(protein.max_sub))
-
-        protein_count += 1
-        sequence_lengths.append(protein.seq.shape[1])
-        model_count += num_models
-        proteins.append(protein)
-
-        Path.mkdir(destpath / protein_name, exist_ok=False)
-        with open(destpath / protein_name / 'protein_stats.yaml', 'w') as f:
+        target = make_target(protein)
+        if compress:
+            np.savez_compressed(destpath / f'{target_name}.npz', **target)
+        else:
+            np.savez(destpath / f'{target_name}.npz', **target)
+        with open(destpath / f'{target_name}_info.yaml', 'w') as f:
             pyaml.dump({
-                'protein': protein_name,
-                'num_models': len(protein.names),
-                'length': protein.seq.shape[1],
+                'target': target_name,
+                'num_residues': len(target['residues']),
+                'num_decoys': len(target['decoy_names']),
             }, dst=f, sort_dicts=False)
 
-    # Bucketize the scores into 20 equally-spaced bins in the range [0, 1] and compute frequency counts for each bin.
-    # Compute weights for the local scores proportionally to the inverse of the frequency of
-    # that score in the dataset, set minimum frequency to 1 to avoid +inf weights
-    weights = {}
+        scores['local']['lddt'].append(target['lddt'].ravel())
+        # scores['local']['sscore'].append(target['sscore'].ravel())
+        scores['global']['gdtts'].append(target['gdtts'])
+        # scores['global']['gdtts_ha'].append(target['gdtts_ha'])
+        # scores['global']['rmsd'].append(target['rmsd'])
+        # scores['global']['maxsub'].append(target['maxsub'])
+
+        sequence_lengths.append(len(target['residues']))
+        dataset_index['target'].extend([target['target_name']] * len(target['decoy_names']))
+        dataset_index['decoy'].extend(target['decoy_names'])
+        dataset_index['path'].extend([f'{target["target_name"]}.npz'] * len(target['decoy_names']))
+        dataset_index['index'].extend(range(len(target['decoy_names'])))
+
+    dataset_index = pd.DataFrame(dataset_index)
+    dataset_index.to_csv(destpath / 'dataset_index.csv', header=True, index=False)
+
+    # Bucketize the scores into 20 equally-spaced bins in the range [0, 1] and compute frequency counts for each bin
     bins = np.linspace(0, 1, num=20 + 1)
-    for name in scores.keys():
-        scores[name] = pd.Series(np.concatenate(scores[name]), name=name).dropna()
-        frequencies = pd.cut(scores[name], bins=bins, include_lowest=True).value_counts().sort_index()
-        frequencies.to_pickle(destpath / f'{name}_frequencies.pkl')
-        weights[name] = frequencies.max() / frequencies.clip(lower=1)
+    for score_type in scores.keys():
+        for score_name in scores[score_type].keys():
+            scores[score_type][score_name] = pd.Series(np.concatenate(scores[score_type][score_name])).dropna()
+            frequencies = pd.cut(
+                scores[score_type][score_name], bins=bins, include_lowest=True).value_counts().sort_index()
+            frequencies.to_pickle(destpath / f'{score_type}_{score_name}_frequencies.pkl')
 
     dataset_stats = {
         'dataset': Path(filepath).name,
-        'num_proteins': protein_count,
-        'num_models': model_count,
-        'avg_length': sum(sequence_lengths) / protein_count,
-        'max_length': max(sequence_lengths),
-        **{score_name: scores_series.describe().to_dict() for score_name, scores_series in scores.items()}
+        'num_targets': dataset_index['target'].nunique(),
+        'num_decoys': len(dataset_index['decoy']),
+        'avg_length': np.mean(sequence_lengths),
+        'max_length': np.max(sequence_lengths),
+        **{score_type: {
+            score_name: scores[score_type][score_name].describe().to_dict()
+            for score_name in scores[score_type]
+        } for score_type in scores.keys()}
     }
     pyaml.print(dataset_stats, sort_dicts=False)
     with open(destpath / 'dataset_stats.yaml', 'w') as f:
         pyaml.dump(dataset_stats, dst=f, sort_dicts=False)
 
-    # Second pass: save every model as a pytorch object
-    models_bar = tqdm.tqdm(total=model_count, desc='Models  ', unit=' models', leave=False)
-    samples_df = []
-    for protein in proteins:
-        for model_idx in range(len(protein.names)):
-            sample = protein_model_to_graph(protein, model_idx, weights)
-            torch.save(sample, destpath / sample[0] / f'{sample[1]}.pt')
-            samples_df.append({
-                'target': sample[0],
-                'model': sample[1],
-                'path': f'{sample[0]}/{sample[1]}.pt'
-            })
-            models_bar.update()
-    pd.DataFrame(samples_df).to_csv(destpath / 'samples.csv', header=True, index=False)
-    models_bar.close()
     h5_file.close()
 
 
-def protein_model_to_graph(protein, model_idx, weights):
-    # Name of this protein
-    protein_name = protein._v_name
+def make_target(protein):
+    # Name of this protein and of its decoys
+    target_name = protein._v_name
+    decoy_names = np.char.decode(protein.names, 'utf-8')  # D
 
-    # Protein sequence and multi-sequence-alignment features, common to all models
-    residues = protein.seq[0]                # One-hot encoding of the residues present in this model
-    partial_entropy = protein.part_entr[0]   # Partial entropy of the residues
-    self_information = protein.self_info[0]  # Self information of the residues
-    sequence_length = len(residues)
+    # Primary structure (sequence of amino acids) and multi-sequence-alignment features:
+    # partial entropy and self information. These are common to all decoys.
+    residues = np.argmax(protein.seq[0], axis=1)  # S       # TODO: 22 -> 20
+    partial_entropy = protein.part_entr[0]        # S x 22
+    self_information = protein.self_info[0]       # S x 22
 
     # Secondary structure is determined using some method by some research group.
     # All models use the original sequence as source, but can fail to determine a structure for some residues.
     # The DSSP features are extracted for the residues whose 3D coordinates are determined.
     # Missing DSSP features are filled with 0s in the dataset.
-    decoy_name = protein.names[model_idx].decode('utf-8')  # Who built this model of the protein
-    coordinates = protein.cb_coordinates[model_idx]        # Coordinates of the β carbon (α if β is not present)
-    structure_determined = protein.valid_dssp[model_idx]   # Which residues are determined within this model
-    dssp_features = protein.dssp[model_idx]                # DSSP features for the secondary structure
+    dssp_features = np.concatenate((
+        protein.dssp,                               # D x S x 14
+        np.expand_dims(protein.valid_dssp, axis=2)  # D x S x  1
+    ), axis=2)
+
+    all_senders = []
+    all_receivers = []
+    all_distances = []
+    for decoy_idx in range(len(decoy_names)):
+        # Coordinates of the β carbon (α if β is not present) for this decoy
+        coordinates = protein.cb_coordinates[decoy_idx]  # S x 3
+        senders, receivers, distances = make_edges(coordinates)
+        all_senders.append(senders)
+        all_receivers.append(receivers)
+        all_distances.append(distances)
 
     # For every residue, a score is determined by comparison with the native structure (using LDDT)
     # For some models, it is not possible to assign a score to a residue if:
     # - the experiment to determine the native model has failed to  _observe_ the secondary structure of that residue
     # - the algorithm to determine this model has failed to _determine_ the secondary structure of that residue
-    # Frequency weights are looked up in the corresponding weights table (NaN scores get NaN weight).
-    local_lddt = protein.lddt[model_idx]
-
-    local_lddt_valid = np.array(protein.valid[model_idx], dtype=np.bool)
+    local_lddt = np.array(protein.lddt)
+    local_lddt_valid = np.array(protein.valid, dtype=np.bool)
     if np.any(local_lddt_valid != np.isfinite(local_lddt)):
-        tqdm.tqdm.write(f'Inconsistent validity of local LDDT scores for {protein_name}/{decoy_name}: '
-                        f'found {np.count_nonzero(np.isfinite(local_lddt))} not null scores, '
-                        f'expected {np.count_nonzero(local_lddt_valid)} valid scores.', file=sys.stderr)
-        if decoy_name == 'native':
-            # Native models report a score of 1. for all residues, but some of them
-            # were not determined, so those should be marked invalid.
-            local_lddt[~local_lddt_valid] = np.nan
-        else:
-            # Why does this happen? David says:
-            # "It may be that the C alpha are present, so we can evaluate similarity,
-            #  but not all the backbone is, so dssp cannot compute the angles."
-            local_lddt_valid = np.isfinite(local_lddt)
+        for invalid_decoy_idx in (local_lddt_valid != np.isfinite(local_lddt)).any(axis=1).nonzero()[0]:
+            tqdm.tqdm.write(f'[{target_name}/{decoy_names[invalid_decoy_idx]}] Inconsistent LDDT: '
+                            f'found {np.count_nonzero(np.isfinite(local_lddt[invalid_decoy_idx]))} not null scores, '
+                            f'expected {np.count_nonzero(local_lddt_valid[invalid_decoy_idx])} valid scores.',
+                            file=sys.stderr)
+            if decoy_names[invalid_decoy_idx] == 'native':
+                # Native models report a score of 1 for all residues, but some of them
+                # were not determined in the experiment, so those should be marked invalid.
+                local_lddt[invalid_decoy_idx, ~local_lddt_valid[invalid_decoy_idx]] = np.nan
+            else:
+                # Why does this happen? David says:
+                # "It may be that the C alpha are present, so we can evaluate similarity,
+                #  but not all the backbone is, so DSSP cannot compute the angles."
+                local_lddt_valid[invalid_decoy_idx] = np.isfinite(local_lddt[invalid_decoy_idx])
 
-    local_lddt_weights = np.full_like(local_lddt, fill_value=np.nan)
-    local_lddt_weights[local_lddt_valid] = weights['local_lddt'].loc[local_lddt[local_lddt_valid]].values
-    if np.isnan(local_lddt[local_lddt_valid]).any() or np.isnan(local_lddt_weights[local_lddt_valid]).any():
-        raise ValueError(f'Found NaN values in local LDDT scores for {protein_name}/{decoy_name}')
+            # Is this check even necessary?
+            if np.isnan(local_lddt[invalid_decoy_idx, local_lddt_valid[invalid_decoy_idx]]).any():
+                raise ValueError(
+                    f'Found NaN values in local LDDT scores for {target_name}/{decoy_names[invalid_decoy_idx]}')
 
-    # The global LDDT score is an average of the local LDDT scores:
-    # - residues missing from the model get a score of 0
-    # - residues missing from the native structure are ignored in the average
-    # Frequency weight us looked up in the corresponding weights table.
-    global_lddt = protein.lddt_global[model_idx]
-    global_lddt_weight = weights['global_lddt'].loc[global_lddt]
-    if np.isnan(global_lddt) or np.isnan(global_lddt_weight):
-        raise ValueError(f'Found NaN values in global LDDT score for {protein_name}/{decoy_name}')
+    # GDT_TS is a global score of the quality of a model.
+    global_gdtts = np.array(protein.gdt_ts)
+    if np.isnan(global_gdtts).any():
+        for invalid_decoy_idx in np.isnan(global_gdtts).nonzero()[0]:
+            raise ValueError(
+                f'Found NaN values in global GDT_TS score for {target_name}/{decoy_names[invalid_decoy_idx]}')
 
-    # The global GDT_TS score is another way of scoring the quality of a model.
-    # Until we get GDT_TS in the dataset we use an average of the local S-score as a proxy for GDT_TS.
-    # This is ok because GDT_TS and S-scores have a Pearson correlation of 1.
-    # Since the S-score of missing residues is NaN, we ignore those scores when taking the mean.
-    # Frequency weight is looked up in the corresponding weights table.
-    global_gdtts = protein.gdt_ts[model_idx]
-    global_gdtts_weight = weights['global_gdtts'].loc[global_gdtts]
-    if np.isnan(global_gdtts) or np.isnan(global_gdtts_weight):
-        raise ValueError(f'Found NaN values in global GDT_TS score for {protein_name}/{decoy_name}')
-
-    senders, receivers, edge_features = make_edges(coordinates)
-
-    graph_in = tg.Graph(
-        num_nodes=sequence_length,
-        node_features=torch.from_numpy(np.concatenate([
-            residues,
-            partial_entropy,
-            self_information,
-            dssp_features,
-            structure_determined[:, None] * 2 - 1
-        ], axis=1)).float(),
-        senders=torch.from_numpy(senders),
-        receivers=torch.from_numpy(receivers),
-        edge_features=torch.from_numpy(edge_features).float()
-    ).validate()
-
-    graph_target = tg.Graph(
-        num_nodes=sequence_length,
-        node_features=torch.from_numpy(np.stack([
-            local_lddt,
-            local_lddt_weights,
-        ], axis=1)).float(),
-        global_features=torch.tensor([
-            global_lddt,
-            global_gdtts,
-            global_lddt_weight,
-            global_gdtts_weight,
-        ]).float()
-    ).validate()
-
-    assert torch.isfinite(graph_in.node_features).all()
-    assert torch.isfinite(graph_in.edge_features).all()
-
-    return protein_name, decoy_name, graph_in, graph_target
+    return {
+        'target_name': target_name,
+        'decoy_names': decoy_names,
+        'residues': residues,
+        'self_information': self_information,
+        'partial_entropy': partial_entropy,
+        'dssp': dssp_features,
+        'senders': all_senders,
+        'receivers': all_receivers,
+        'distances': all_distances,
+        'gdtts': global_gdtts,
+        'lddt': local_lddt,
+    }
 
 
 def make_edges(coords):
-    import pandas as pd
     import scipy.spatial.distance
 
     # The distances are returned in a condensed upper triangular form without the diagonal,
@@ -398,15 +295,7 @@ def make_edges(coords):
     # receivers = [1, 2, 3, 4, 2, 3, 4, 3, 4, 4]
     distances = scipy.spatial.distance.pdist(coords)
     senders, receivers = np.triu_indices(len(coords), k=1)
-
-    # Separation = number of residues between two residues in the sequence.
-    # Chemically bonded adjacent residues have 0 separation.
-    # Separation is bucketized in 6 categories according to [0, 1, 2, 3, 4, 5:10, 10:]
     separation = receivers - senders - 1
-    bins = [0, 1, 2, 3, 4, 5, 10]
-    separation_enc = np.digitize(separation, bins=bins, right=False) - 1
-    separation_onehot = pd.get_dummies(
-        pd.Categorical(separation_enc, categories=np.arange(len(bins)), ordered=True)).values
 
     # The spatial distance between adjacent residues might be missing (NaN) because the residues don't have
     # 3D coordinates in this particular model. For adjacent residues (separation = 0) we set the edge length
@@ -415,16 +304,11 @@ def make_edges(coords):
     to_fill = (separation == 0) & (np.isnan(distances))
     distances[to_fill] = np.random.normal(5.349724573740155, 0.9130922391969375, np.count_nonzero(to_fill))
 
-    edge_features = np.concatenate((
-        distances[:, None],
-        separation_onehot
-    ), axis=1)
-
-    # Distances greater that 12 Angstrom are considered irrelevant and removed unless between adjacent residues.
+    # Distances > MAX_CUTOFF_DISTANCE Angstrom are considered irrelevant and removed unless between adjacent residues.
     with np.errstate(invalid='ignore'):
         to_keep = (distances < MAX_CUTOFF_DISTANCE) | (separation == 0)
 
-    return senders[to_keep], receivers[to_keep], edge_features[to_keep]
+    return senders[to_keep], receivers[to_keep], distances[to_keep].astype(np.float32)
 
 
 def describe(filepath):
@@ -463,6 +347,7 @@ def main():
     sp_preprocess = subparsers.add_parser('preprocess', help='Process protein file')
     sp_preprocess.add_argument('--filepath', type=str, required=True)
     sp_preprocess.add_argument('--destpath', type=str, required=True)
+    sp_preprocess.add_argument('--compress', action='store_true')
     sp_preprocess.set_defaults(command=process_file)
 
     sp_describe = subparsers.add_parser('describe', help='Describe existing datasets')

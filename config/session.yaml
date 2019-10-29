@@ -3,6 +3,7 @@ batch_size: 200
 checkpoint: 2
 #log: 1
 data:
+  in_memory: False
   trainval:
     - data/CASP7
     - data/CASP8
