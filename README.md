@@ -36,10 +36,10 @@ python -m proteins.train config/train.yaml --model config/model.yaml --session c
 Or define all parameters manually
 ```bash
 # Data
-cutoff=8
-partial_entropy=yes
-self_information=yes
-dssp=yes
+cutoff=10
+partial_entropy=no
+self_information=no
+dssp=no
 
 # Model
 model_fn=proteins.networks.ProteinGN
@@ -47,7 +47,7 @@ layers=6
 min_dist=0
 max_dist=20
 rbf_size=16
-residue_emb_size=32
+residue_emb_size=64
 separation_enc=yes
 mp_in_edges=128
 mp_in_nodes=512
@@ -69,8 +69,9 @@ weight_decay=.00001
 
 # Session
 max_epochs=10
-batch_size=200
+batch_size=1000
 datasets='[data/CASP7,data/CASP8,data/CASP9,data/CASP10]'
+logs='~/proteins/runs'
 
 tags=()
 tags+=("residueonly")
@@ -93,11 +94,11 @@ python -m proteins.train \
     tags="${tags}" \
     --data \
         cutoff="${cutoff}" \
-        partial_entropy=${partial_entropy} \
-        self_information=${self_information} \
-        dssp=${dssp} \
+        partial_entropy="${partial_entropy}" \
+        self_information="${self_information}" \
+        dssp="${dssp}" \
     --model \
-        fn=${model_fn} \
+        fn="${model_fn}" \
         layers="${layers}" \
         dropout="${dropout}" \
         batch_norm="${batch_norm}" \
@@ -119,15 +120,17 @@ python -m proteins.train \
         name=mse \
         weight="${loss_global_gdtts}" \
     --optimizer \
-        fn=${opt_fn} \
+        fn="${opt_fn}" \
         lr="${learning_rate}" \
         weight_decay="${weight_decay}" \
     --session.data \
         trainval="${datasets}" \
         split=35 \
         in_memory=yes \
+    --session.logs \
+        folder="${logs}" \
     --session \
-        cpus=8 \
+        cpus=1 \
         checkpoint=2 \
         max_epochs="${max_epochs}" \
         batch_size="${batch_size}"

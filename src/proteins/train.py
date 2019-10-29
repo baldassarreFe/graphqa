@@ -57,7 +57,7 @@ ex = parse_args(config={
         'cpus': multiprocessing.cpu_count() - 1,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         'data': {},
-        # 'log': 1,
+        'logs': {},
         'checkpoint': -1,
     }
 })
@@ -159,7 +159,7 @@ sort_dict(ex, [
 ])
 sort_dict(session, [
     'completed_epochs', 'samples', 'max_epochs', 'batch_size', 'seed', 'cpus', 'device', 'status',
-    'datetime_started', 'datetime_completed', 'data', 'log', 'checkpoint', 'metric', 'misc', 'git', 'cuda'
+    'datetime_started', 'datetime_completed', 'data', 'logs', 'checkpoint', 'metric', 'misc', 'git', 'cuda'
 ])
 pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # endregion
@@ -167,7 +167,7 @@ pyaml.pprint(ex, safe=True, sort_dicts=False, force_embed=True, width=200)
 # region Building phase
 # Random seeds (set them after the random run id is generated)
 set_seeds(session['seed'])
-saver = Saver(Path(os.environ.get('RUNS_FOLDER', './runs')).joinpath(ex['fullname']))
+saver = Saver(Path(session['logs']['folder']).joinpath(ex['fullname']))
 logger = SummaryWriter(saver.base_folder)
 
 
@@ -420,7 +420,7 @@ local_lddt_metrics.attach(trainer, 'local_lddt')
 local_lddt_metrics.attach(validator, 'local_lddt')
 
 global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='Global GDT_TS', output_transform=ot,
-                                     figures=('hist', 'recall_at_k'))
+                                     figures=('hist',))
 global_gdtts_metrics.attach(trainer, 'global_gdtts')
 global_gdtts_metrics.attach(validator, 'global_gdtts')
 

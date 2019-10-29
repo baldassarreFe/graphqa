@@ -1,7 +1,8 @@
 max_epochs: 35
 batch_size: 200
 checkpoint: 2
-#log: 1
+logs:
+  folder: ~/proteins/runs
 data:
   in_memory: False
   trainval:

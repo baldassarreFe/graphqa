@@ -11,8 +11,8 @@ nvidia-smi
 source /root/.zshrc
 conda activate base
 # Install as editable, otherwise pip tries to copy the whole data folder and it takes forever
-pip install --quiet --editable /proteins &&
-echo "Installed proteins@$(cd /proteins && git rev-parse --short HEAD)"
+pip install --quiet --editable /proteins/src &&
+echo "Installed proteins@$(cd /proteins/src && git rev-parse --short HEAD)"
 
 if [[ -n "$@" ]]; then
     echo -e "Executing CMD: $@\n"
