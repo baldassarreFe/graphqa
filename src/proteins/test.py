@@ -1,5 +1,4 @@
 import os
-import yaml
 import pyaml
 import multiprocessing
 
@@ -8,11 +7,9 @@ from datetime import datetime
 from operator import itemgetter
 
 import numpy as np
-import pandas as pd
 
 import torch
 import torch.utils.data
-import torchgraphs as tg
 
 from ignite.engine import Engine, Events
 from ignite.contrib.handlers import ProgressBar
@@ -20,8 +17,8 @@ from ignite.contrib.handlers import ProgressBar
 from . import features
 from .config import parse_args
 from .utils import git_info, cuda_info, sort_dict, round_timedelta, load_model
-from .dataset import ProteinQualityDataset, SelectNodeFeatures, PositionalEncoding, \
-    RemoveEdges, RbfDistEdges, SeparationEncoding
+from .data import DecoyBatch
+from .dataset import ProteinQualityTarget
 from .metrics import customize_state, LocalMetrics, GlobalMetrics
 from .ignite_commons import setup_testing, update_metrics, save_figures
 
@@ -48,15 +45,11 @@ test_session: dict = ex['test']
 # Experiment: checks and computed fields
 ex['data'].setdefault('residues', True)
 ex['data'].setdefault('partial_entropy', True)
-ex['data'].setdefault('self_info', True)
-ex['data'].setdefault('dssp_features', True)
+ex['data'].setdefault('self_information', True)
+ex['data'].setdefault('dssp', True)
 
 if ex['model']['fn'] is None:
     raise ValueError('Model constructor function not defined')
-ex['model']['enc_in_nodes'] = SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
-                                                 ex['data']['self_info'], ex['data']['dssp_features']).num_features + \
-                              ex['data']['encoding_size']
-ex['model']['enc_in_edges'] = features.Input.Edge.LENGTH if ex['data']['separation'] else 2
 
 # Session computed fields
 test_session['samples'] = 0
@@ -98,38 +91,30 @@ model.load_state_dict(torch.load(Path(ex['model']['state_dict']).expanduser(), m
 
 # Dataset and dataloader
 def get_dataloader(ex, test_session):
+    node_features = [k for k in ('partial_entropy', 'self_information', 'dssp') if ex['data'][k]]
+    cutoff = ex['data']['cutoff']
+
+    targets = []
     folder = Path(test_session['data']['input']).expanduser().resolve()
     if not folder.is_dir():
         raise ValueError(f'Not a directory: {folder}')
+    # with open(folder / 'dataset_stats.yaml') as f:
+    #     max_sequence_length = yaml.safe_load(f)['max_length']
+    for target in sorted(folder.glob('*.npz')):
+        targets.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
 
-    with open(folder / 'dataset_stats.yaml') as f:
-        max_sequence_length = yaml.safe_load(f)['max_length']
-    df = pd.read_csv(folder / 'samples.csv', header=0)
-    df['path'] = [folder / p for p in df['path']]
+    if test_session['data']['in_memory']:
+        for target in targets:
+            target.load_eager()
 
-    transforms = [
-        # Edge features (removing edges should go first)
-        RemoveEdges(cutoff=ex['data']['cutoff']),
-        RbfDistEdges(sigma=ex['data']['sigma']),
-        SeparationEncoding(use_separation=ex['data']['separation']),
-        # Node features (selecting features should go first)
-        SelectNodeFeatures(ex['data']['residues'], ex['data']['partial_entropy'],
-                           ex['data']['self_info'], ex['data']['dssp_features']),
-        PositionalEncoding(encoding_size=ex['data']['encoding_size'], base=ex['data']['encoding_base'],
-                           max_sequence_length=max_sequence_length)
-    ]
-
-    # df = df.query('target == "T0944"') # Get only one funnel for the paper
-    # df = df[df.target <= 'T0812']      # Split CASP 11 funnels in two pages for the paper
-    # df = df[df.target >  'T0812']      # Split CASP 11 funnels in two pages for the paper
-    dataset_test = ProteinQualityDataset(df, transforms=transforms)
+    dataset_test = torch.utils.data.ConcatDataset(targets)
 
     dataloader_kwargs = dict(
         num_workers=test_session['cpus'],
         pin_memory='cuda' in test_session['device'],
         worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed()) % (2 ** 32 - 1)),
         batch_size=test_session['batch_size'],
-        collate_fn=tg.GraphBatch.collate,
+        collate_fn=DecoyBatch.collate,
     )
     return torch.utils.data.DataLoader(dataset_test, shuffle=False, **dataloader_kwargs)
 
@@ -139,16 +124,11 @@ dataloader_test = get_dataloader(ex, test_session)
 
 
 def test_function(tester, batch):
-    protein_names, model_names, graphs, targets = batch
-    graphs = graphs.to(test_session['device'])
-    targets = targets.to(test_session['device'])
-    results = model(graphs)
+    batch = batch.to(test_session['device'])
+    results = model(batch)
 
     return {
-        'num_samples': len(graphs),
-        'protein_names': protein_names, 
-        'model_names': model_names,
-        'targets': targets,
+        'num_samples': len(batch),
         'results': results,
     }
 
@@ -200,12 +180,9 @@ def session_end(tester, test_session):
 
 
 tester = Engine(test_function)
-ot = itemgetter('protein_names', 'model_names', 'results', 'targets')
+ot = itemgetter('results')
 local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='LDDT', output_transform=ot)
 local_lddt_metrics.attach(tester, 'local_lddt')
-
-global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='Global LDDT', output_transform=ot)
-global_lddt_metrics.attach(tester, 'global_lddt')
 
 global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='GDT-TS', output_transform=ot)
 global_gdtts_metrics.attach(tester, 'global_gdtts')

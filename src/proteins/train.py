@@ -208,15 +208,15 @@ def get_dataloaders(ex, session):
     node_features = [k for k in ('partial_entropy', 'self_information', 'dssp') if ex['data'][k]]
     cutoff = ex['data']['cutoff']
 
-    max_sequence_length = 0
+    # max_sequence_length = 0
     if session['data'].keys() == {'in_memory', 'trainval', 'split'}:
         targets = []
         for folder in session['data']['trainval']:
             folder = Path(folder).expanduser().resolve()
             if not folder.is_dir():
                 raise ValueError(f'Not a directory: {folder}')
-            with open(folder / 'dataset_stats.yaml') as f:
-                max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+            # with open(folder / 'dataset_stats.yaml') as f:
+            #     max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
             for target in sorted(folder.glob('*.npz')):
                 targets.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
 
@@ -232,9 +232,9 @@ def get_dataloaders(ex, session):
             folder = Path(folder).expanduser().resolve()
             if not folder.is_dir():
                 raise ValueError(f'Not a directory: {folder}')
-            with open(folder / 'dataset_stats.yaml') as f:
-                max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
-            for target in folder.glob('*.npz'):
+            # with open(folder / 'dataset_stats.yaml') as f:
+            #     max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+            for target in sorted(folder.glob('*.npz')):
                 targets_train.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
 
         targets_val = []
@@ -242,9 +242,9 @@ def get_dataloaders(ex, session):
             folder = Path(folder).expanduser().resolve()
             if not folder.is_dir():
                 raise ValueError(f'Not a directory: {folder}')
-            with open(folder / 'dataset_stats.yaml') as f:
-                max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
-            for target in folder.glob('*.npz'):
+            # with open(folder / 'dataset_stats.yaml') as f:
+            #     max_sequence_length = max(max_sequence_length, yaml.safe_load(f)['max_length'])
+            for target in sorted(folder.glob('*.npz')):
                 targets_val.append(ProteinQualityTarget(target, node_features=node_features, cutoff=cutoff))
     else:
         raise ValueError(f'Invalid data specification: {session["data"]}')
