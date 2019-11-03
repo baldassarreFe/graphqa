@@ -5,6 +5,7 @@ logs:
   folder: ~/proteins/runs
 data:
   in_memory: False
+  sampler: random
   trainval:
     - data/CASP7
     - data/CASP8

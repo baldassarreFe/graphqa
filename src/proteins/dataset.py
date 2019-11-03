@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import torch.utils.data
 
-from proteins.data import Decoy
+from .data import Decoy
+from .utils import iter_chunks
 
 MAX_CUTOFF_DISTANCE = 14
 
@@ -100,8 +101,39 @@ class ProteinQualityTarget(torch.utils.data.Dataset):
     def __getstate__(self):
         # Not used: if the multiprocessing context is "fork" the dataloader is not pickled,
         # but shared with a copy-on-write mechanism
-        print('getstate', {k for k, v in self.__dict__.items() if k != '_target'})
         return {k: v for k, v in self.__dict__.items() if k != '_target'}
+
+
+class TargetBatchSampler(torch.utils.data.Sampler):
+    def __init__(self, dataset: torch.utils.data.ConcatDataset, batch_size: int, shuffle: bool, drop_last: bool):
+        super(TargetBatchSampler, self).__init__(dataset)
+        self.dataset = dataset
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.batch_size = batch_size
+
+        if self.drop_last:
+            self.length = sum(len(target_dataset) // self.batch_size
+                              for target_dataset in self.dataset.datasets)
+        else:
+            self.length = sum(int(np.ceil(len(target_dataset) / self.batch_size))
+                              for target_dataset in self.dataset.datasets)
+
+    def __iter__(self):
+        batches = []
+        for target_dataset, offset in zip(self.dataset.datasets, [0] + self.dataset.cumulative_sizes):
+            num_decoys = len(target_dataset)
+            decoy_indexes = np.random.permutation(num_decoys) if self.shuffle else np.arange(num_decoys)
+            decoy_indexes += offset
+            batches.extend(iter_chunks(decoy_indexes, chunk_size=self.batch_size, drop_last=self.drop_last))
+
+        if self.shuffle:
+            batches = np.random.permutation(batches)
+
+        yield from batches
+
+    def __len__(self):
+        return self.length
 
 
 def process_file(filepath: Union[str, Path], destpath: Union[str, Path], compress: bool):

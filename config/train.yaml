@@ -20,4 +20,7 @@ loss:
     weight: 5
   global_gdtts:
     name: mse
-    weight: 5
+    weight: 1
+  ranking:
+    name: rank
+    weight: 0

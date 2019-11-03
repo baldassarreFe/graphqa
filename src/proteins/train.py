@@ -1,5 +1,4 @@
 import os
-import yaml
 import pyaml
 import random
 import inspect
@@ -25,11 +24,10 @@ from ignite.contrib.handlers import ProgressBar
 
 from . import features
 from .data import DecoyBatch
-from .utils import round_timedelta, load_model
 from .config import parse_args
 from .saver import Saver
-from .utils import git_info, cuda_info, set_seeds, import_, sort_dict
-from .dataset import ProteinQualityTarget
+from .utils import git_info, cuda_info, set_seeds, import_, sort_dict, round_timedelta, load_model, rank_loss
+from .dataset import ProteinQualityTarget, TargetBatchSampler
 from .metrics import customize_state, ProteinAverageLosses, LocalMetrics, GlobalMetrics, GpuMaxMemoryAllocated
 from .my_hparams import make_session_start_summary, make_session_end_summary
 from .ignite_commons import setup_training, setup_validation, update_metrics, handle_failure, flush_logger
@@ -138,12 +136,12 @@ if session['cpus'] < 0:
     raise ValueError(f'Invalid number of cpus: {session["cpus"]}')
 if session['seed'] is None:
     raise ValueError(f'Invalid seed: {session["seed"]}')
-if session['data'].keys() == {'in_memory', 'trainval', 'split'}:
+if {'trainval', 'split'}.issubset(session['data'].keys()):
     if isinstance(session['data']['trainval'], str):
         session['data']['trainval'] = [session['data']['trainval']]
     if not isinstance(session['data']['split'], int) or session['data']['split'] <= 0:
         raise ValueError(f'Invalid data split {session["data"]["split"]}')
-elif session['data'].keys() == {'in_memory', 'train', 'val'}:
+elif {'train', 'val'}.issubset(session['data'].keys()):
     if isinstance(session['data']['train'], str):
         session['data']['train'] = session['data']['train'].split(':')
     if isinstance(session['data']['val'], str):
@@ -209,7 +207,7 @@ def get_dataloaders(ex, session):
     cutoff = ex['data']['cutoff']
 
     # max_sequence_length = 0
-    if session['data'].keys() == {'in_memory', 'trainval', 'split'}:
+    if {'trainval', 'split'}.issubset(session['data'].keys()):
         targets = []
         for folder in session['data']['trainval']:
             folder = Path(folder).expanduser().resolve()
@@ -226,7 +224,7 @@ def get_dataloaders(ex, session):
         targets_split = np.random.RandomState(ex['history'][0]['seed']).permutation(len(targets))
         targets_train = [targets[i] for i in targets_split[session['data']['split']:]]
         targets_val = [targets[i] for i in targets_split[:session['data']['split']]]
-    elif session['data'].keys() == {'in_memory', 'train', 'val'}:
+    elif {'train', 'val'}.issubset(session['data'].keys()):
         targets_train = []
         for folder in session['data']['train']:
             folder = Path(folder).expanduser().resolve()
@@ -265,23 +263,45 @@ def get_dataloaders(ex, session):
     dataset_train = torch.utils.data.ConcatDataset(targets_train)
     dataset_val = torch.utils.data.ConcatDataset(targets_val)
 
-    dataloader_kwargs = dict(
-        num_workers=session['cpus'],
-        pin_memory='cuda' in session['device'],
-        worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed()) % (2 ** 32 - 1)),
-        batch_size=session['batch_size'],
-        collate_fn=DecoyBatch.collate,
-    )
-
-    # TODO implement target-based sampler
-    dataloader_train = torch.utils.data.DataLoader(dataset_train, shuffle=True, **dataloader_kwargs)
-    dataloader_val = torch.utils.data.DataLoader(dataset_val, shuffle=False, **dataloader_kwargs)
+    if session['data']['sampler'] == 'random':
+        if ex['loss']['ranking']['weight'] > 0:
+            raise ValueError('Random sampler not compatible with pairwise ranking loss, use `targetbatch` sampler')
+        dataloader_kwargs = dict(
+            num_workers=session['cpus'],
+            pin_memory='cuda' in session['device'],
+            worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed()) % (2 ** 32 - 1)),
+            batch_size=session['batch_size'],
+            drop_last=False,
+            collate_fn=DecoyBatch.collate,
+        )
+        dataloader_train = torch.utils.data.DataLoader(dataset_train, shuffle=True, **dataloader_kwargs)
+        dataloader_val = torch.utils.data.DataLoader(dataset_val, shuffle=False, **dataloader_kwargs)
+    elif session['data']['sampler'] == 'targetbatch':
+        dataloader_kwargs = dict(
+            num_workers=session['cpus'],
+            pin_memory='cuda' in session['device'],
+            worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed()) % (2 ** 32 - 1)),
+            collate_fn=DecoyBatch.collate,
+        )
+        bs_train = TargetBatchSampler(dataset_train, batch_size=session['batch_size'], shuffle=True, drop_last=True)
+        bs_val = TargetBatchSampler(dataset_val, batch_size=session['batch_size'], shuffle=False, drop_last=False)
+        dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_sampler=bs_train, **dataloader_kwargs)
+        dataloader_val = torch.utils.data.DataLoader(dataset_val, batch_sampler=bs_val, **dataloader_kwargs)
+    else:
+        raise ValueError(f'Unrecognized sampler: {session["data"]["sampler"]}')
 
     return dataloader_train, dataloader_val
 
 
 dataloader_train, dataloader_val = get_dataloaders(ex, session)
-session['misc']['samples'] = {'train': len(dataloader_train.dataset), 'val': len(dataloader_val.dataset)}
+session['misc']['samples'] = {
+    'train': len(dataloader_train.dataset),
+    'val': len(dataloader_val.dataset),
+}
+session['misc']['targets'] = {
+    'train': len(dataloader_train.dataset.datasets),
+    'val': len(dataloader_val.dataset.datasets),
+}
 
 if ex['completed_epochs'] == 0:
     saver.save_experiment(ex, epoch=ex['completed_epochs'], samples=ex['samples'])
@@ -292,12 +312,13 @@ if ex['completed_epochs'] == 0:
 
 
 # region Training
-def training_function(trainer, batch):
+def training_function(trainer, batch: DecoyBatch):
     batch = batch.to(session['device'])
     results = model(batch)
 
     loss_local_lddt = torch.tensor(0., device=session['device'])
     loss_global_gdtts = torch.tensor(0., device=session['device'])
+    loss_rank_gdtts = torch.tensor(0., device=session['device'])
 
     if ex['loss']['local_lddt']['weight'] > 0:
         node_mask = torch.isfinite(batch.lddt)
@@ -316,9 +337,19 @@ def training_function(trainer, batch):
         loss_global_gdtts = loss_global_gdtts.mean()
         assert torch.isfinite(loss_global_gdtts).item()
 
+    if ex['loss']['ranking']['weight'] > 0:
+        assert all(batch.target_name[0] == tn for tn in batch.target_name)
+        loss_rank_gdtts = rank_loss(
+            batch.gdtts,
+            results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
+        )
+        loss_rank_gdtts = loss_rank_gdtts.mean()
+        assert torch.isfinite(loss_rank_gdtts).item()
+
     loss_total = (
         ex['loss']['local_lddt']['weight'] * loss_local_lddt +
-        ex['loss']['global_gdtts']['weight'] * loss_global_gdtts
+        ex['loss']['global_gdtts']['weight'] * loss_global_gdtts +
+        ex['loss']['ranking']['weight'] * loss_rank_gdtts
     )
 
     optimizer.zero_grad()
@@ -332,6 +363,7 @@ def training_function(trainer, batch):
             'total': loss_total.item(),
             'local_lddt': loss_local_lddt.item(),
             'global_gdtts': loss_global_gdtts.item(),
+            'ranking': loss_rank_gdtts.item(),
         },
     }
 
@@ -340,8 +372,9 @@ def validation_function(validator, batch):
     batch = batch.to(session['device'])
     results = model(batch)
 
-    loss_local_lddt = torch.tensor(0.)
-    loss_global_gdtts = torch.tensor(0.)
+    loss_local_lddt = torch.tensor(0., device=session['device'])
+    loss_global_gdtts = torch.tensor(0., device=session['device'])
+    loss_rank_gdtts = torch.tensor(0., device=session['device'])
 
     if ex['loss']['local_lddt']['weight'] > 0:
         node_mask = torch.isfinite(batch.lddt)
@@ -358,9 +391,18 @@ def validation_function(validator, batch):
         )
         loss_global_gdtts = loss_global_gdtts.mean()
 
+    if ex['loss']['ranking']['weight'] > 0:
+        assert all(batch.target_name[0] == tn for tn in batch.target_name)
+        loss_rank_gdtts = rank_loss(
+            batch.gdtts,
+            results.global_features[:, features.Output.Global.GLOBAL_GDTTS],
+        )
+        loss_rank_gdtts = loss_rank_gdtts.mean()
+
     loss_total = (
-        ex['loss']['local_lddt']['weight'] * loss_local_lddt +
-        ex['loss']['global_gdtts']['weight'] * loss_global_gdtts
+            ex['loss']['local_lddt']['weight'] * loss_local_lddt +
+            ex['loss']['global_gdtts']['weight'] * loss_global_gdtts +
+            ex['loss']['ranking']['weight'] * loss_rank_gdtts
     )
 
     return {
@@ -370,6 +412,7 @@ def validation_function(validator, batch):
             'total': loss_total.item(),
             'local_lddt': loss_local_lddt.item(),
             'global_gdtts': loss_global_gdtts.item(),
+            'ranking': loss_rank_gdtts.item(),
         },
     }
 
@@ -411,7 +454,7 @@ trainer = Engine(training_function)
 validator = Engine(validation_function)
 
 losses_avg = ProteinAverageLosses(
-    lambda o: (o['loss']['local_lddt'], o['loss']['global_gdtts'], o['num_samples']))
+    lambda o: (o['loss']['local_lddt'], o['loss']['global_gdtts'], o['loss']['ranking'], o['num_samples']))
 losses_avg.attach(validator)
 
 ot = itemgetter('results')

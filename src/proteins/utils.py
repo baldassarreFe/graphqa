@@ -4,7 +4,7 @@ import itertools
 import subprocess
 import collections
 from datetime import timedelta
-from typing import Mapping, Iterable, MutableMapping
+from typing import Mapping, Iterable, MutableMapping, Union, Sequence
 
 import torch.nn
 import numpy as np
@@ -118,6 +118,17 @@ def tail(iterable: Iterable, n=1):
     return iter(collections.deque(iterable, maxlen=n))
 
 
+def iter_chunks(seq: Union[Sequence, np.ndarray, torch.Tensor], chunk_size: int, drop_last: bool):
+    """Iterate over chunks of the input sequence. Every chunk has the same size, except possibly the last one.
+    """
+    start = 0
+    while start + chunk_size <= len(seq):
+        yield seq[start: start + chunk_size]
+        start += chunk_size
+    if start < len(seq) and not drop_last:
+        yield seq[start:]
+
+
 def sort_dict(mapping: MutableMapping, order: Iterable):
     for key in itertools.chain(filter(mapping.__contains__, order), set(mapping) - set(order)):
         mapping[key] = mapping.pop(key)
@@ -191,3 +202,18 @@ def load_model(config: Mapping) -> torch.nn.Module:
 
     model = function(**{k: v for k, v in config.items() if k not in reserved_keys})
     return model
+
+
+def rank_loss(true: Union[torch.Tensor, np.ndarray], pred: [torch.Tensor, np.ndarray]):
+    if not isinstance(true, torch.Tensor):
+        true = torch.from_numpy(np.array(true))
+    if not isinstance(pred, torch.Tensor):
+        pred = torch.from_numpy(np.array(pred))
+
+    # true_diff[i, j] = true[i] - true[j]
+    true_diff = true[:, None] - true[None, :]
+
+    # pred_diff[i, j] = pred[i] - pred[j]
+    pred_diff = pred[:, None] - pred[None, :]
+
+    return (true_diff.abs() > .1).float() * torch.clamp_min(.1 - true_diff.sign() * pred_diff, min=0.)

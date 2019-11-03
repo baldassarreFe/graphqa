@@ -1,5 +1,4 @@
 from typing import Tuple, Union, Optional
-from collections import defaultdict
 
 import scipy.stats
 import sklearn.metrics
@@ -12,8 +11,8 @@ import ignite
 from ignite.engine import Events
 from ignite.metrics import Metric, RootMeanSquaredError
 
-from . import features
 from .data import DecoyBatch
+from .utils import rank_loss
 from .base_metrics import combine_means, Mean, PearsonR
 
 
@@ -158,6 +157,7 @@ class LocalMetrics(ignite.metrics.Metric):
 class GlobalMetrics(ignite.metrics.Metric):
     METRICS = (
         'rmse',
+        'ranking',
         'pearson',
         'spearman',
         'kendall',
@@ -310,6 +310,8 @@ class GlobalMetrics(ignite.metrics.Metric):
         if 'kendall' in self.metrics:
             metrics['kendall'] = kendalltau(df['preds'], df['true'])
 
+        if 'ranking' in self.metrics:
+            metrics['ranking'] = grouped.apply(lambda g: rank_loss(g['true'], g['preds']).mean()).mean()
         if 'per_target_pearson' in self.metrics:
             metrics['per_target_pearson'] = grouped.apply(lambda g: pearson(g['preds'], g['true'])).mean()
         if 'per_target_spearman' in self.metrics:
@@ -402,12 +404,13 @@ class ScoreHistogram(object):
 
 # noinspection PyAttributeOutsideInit
 class ProteinAverageLosses(Metric):
-    losses_names = ['local_lddt', 'global_gdtts']
+    losses_names = ['local_lddt', 'global_gdtts', 'ranking']
 
     def reset(self):
         self._num_samples = 0
         self._loss_local_lddt = 0
         self._loss_global_gdtts = 0
+        self._loss_ranking = 0
 
     def attach(self, engine, **ignored_kwargs):
         engine.add_event_handler(Events.EPOCH_COMPLETED, self.completed)
@@ -417,15 +420,17 @@ class ProteinAverageLosses(Metric):
             engine.add_event_handler(Events.ITERATION_COMPLETED, self.iteration_completed)
 
     def update(self, output: Tuple[float, float, float, int]):
-        loss_local_lddt, loss_global_gdtts, samples = output
+        loss_local_lddt, loss_global_gdtts, loss_ranking, samples = output
         self._loss_local_lddt = combine_means(self._loss_local_lddt, loss_local_lddt, self._num_samples, samples)
         self._loss_global_gdtts = combine_means(self._loss_global_gdtts, loss_global_gdtts, self._num_samples, samples)
+        self._loss_ranking = combine_means(self._loss_ranking, loss_ranking, self._num_samples, samples)
         self._num_samples += samples
 
     def compute(self):
         return {
             'local_lddt': self._loss_local_lddt,
             'global_gdtts': self._loss_global_gdtts,
+            'ranking': self._loss_ranking,
         }
 
     def completed(self, engine, **ignored_kwargs):
@@ -592,7 +597,7 @@ class ProteinAverageLosses(Metric):
 #     ax.set_xlim(0, 1)
 #     ax.set_ylim(0, 1)
 #     fig.show()
-
-
-if __name__ == '__main__':
-    test()
+#
+#
+# if __name__ == '__main__':
+#     test()
