@@ -145,7 +145,7 @@ tensorboard --logdir runs
 Config files for ablation studies are self-contained and can just be run as:
 ```bash
 NUM_RUNS_PER_STUDY=5
-for f in config/ablations/{nodes,edges,layersvscutoff,architecture,localglobalscore}/*.yaml; do
+for f in config/ablations/{nodes,edges,layersvscutoff,architecture,localglobalscore,separation_encoding}/*.yaml; do
     for i in $(seq ${NUM_RUNS_PER_STUDY}); do
         python -m proteins.train "${f}"
     done

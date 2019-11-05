@@ -18,7 +18,7 @@ class ProteinGN(nn.Module):
             max_dist=20,
             rbf_size=16,
             residue_emb_size=32,
-            separation_enc=True,
+            separation_enc='categorical',
             enc_in_nodes=83,
             enc_in_edges=8,
             layers=1,
@@ -32,14 +32,29 @@ class ProteinGN(nn.Module):
             batch_norm=False,
     ):
         super().__init__()
-        self.layers = []
 
-        self.preprocessing = nn.Sequential(OrderedDict({
-            'rbf_distances': RbfDistEdges(min_dist, max_dist, rbf_size),
-            'separation_encoding': SeparationEncodingEdges() if separation_enc else nn.Identity(),
-            'residue_embedding': ResidueEmbedding(residue_emb_size),
-            'duplicate_edges': DuplicateEdges(),
-        }))
+        preprocessing = OrderedDict()
+
+        # Spatial distances
+        preprocessing['rbf_distances'] = RbfDistEdges(min_dist, max_dist, rbf_size)
+
+        # Sequential distances
+        if separation_enc == 'absent':
+            pass
+        elif separation_enc == 'scalar':
+            preprocessing['separation_encoding'] = ScalarSeparationEncodingEdges()
+        elif separation_enc == 'categorical':
+            preprocessing['separation_encoding'] = CategoricalSeparationEncodingEdges()
+        else:
+            raise ValueError(f'Invalid `separation_enc`: {separation_enc}')
+
+        # Embedding of the amino acid sequence
+        preprocessing['residue_embedding'] = ResidueEmbedding(residue_emb_size)
+
+        # Duplicate edges
+        preprocessing['duplicate_edges'] = DuplicateEdges()
+
+        self.preprocessing = nn.Sequential(preprocessing)
 
         # Edge feature shape: E -> mp_in_edges//2 -> mp_in_edges
         # Node feature shape: N -> mp_in_nodes//2 -> mp_in_nodes
@@ -72,12 +87,14 @@ class ProteinGN(nn.Module):
         # from (mp_in_edges , mp_in_nodes , mp_in_globals )
         # to   (mp_out_edges, mp_out_nodes, mp_out_globals)
         # following powers of 2 in the number of steps given with the `layers` parameter (e.g. 10).
+
         mp_layers_output_sizes = np.power(2, np.linspace(
             np.log2((mp_in_edges, mp_in_nodes, mp_in_globals)),
             np.log2((mp_out_edges, mp_out_nodes, mp_out_globals)),
             num=layers, endpoint=False
         ).round().astype(int)).tolist()[1:] + [(mp_out_edges, mp_out_nodes, mp_out_globals)]
 
+        layers_ = []
         in_e, in_n, in_g = mp_in_edges, mp_in_nodes, mp_in_globals
         for out_e, out_n, out_g in mp_layers_output_sizes:
             layer = nn.Sequential(OrderedDict({
@@ -113,10 +130,10 @@ class ProteinGN(nn.Module):
                 'global1_bn': tg.GlobalBatchNorm(num_features=out_g) if batch_norm else nn.Identity(),
                 'global1_relu': tg.GlobalReLU(),
             }))
-            self.layers.append(layer)
+            layers_.append(layer)
             in_e, in_n, in_g = out_e, out_n, out_g
 
-        self.layers = torch.nn.Sequential(OrderedDict({f'layer_{i}': l for i, l in enumerate(self.layers)}))
+        self.layers = torch.nn.Sequential(OrderedDict({f'layer_{i}': l for i, l in enumerate(layers_)}))
 
         # Node feature shape: mp_out_nodes -> 1
         # Global feature shape: mp_out_globals -> 1
@@ -302,7 +319,19 @@ class RbfDistEdges(nn.Module):
         return decoys
 
 
-class SeparationEncodingEdges(nn.Module):
+class ScalarSeparationEncodingEdges(nn.Module):
+    def forward(self, decoys: DecoyBatch):
+        separation = decoys.receivers - decoys.senders - 1
+        decoys = decoys.evolve(
+            edge_features=torch.cat((
+                decoys.edge_features,
+                separation[:, None].float()
+            ), dim=1),
+        )
+        return decoys
+
+
+class CategoricalSeparationEncodingEdges(nn.Module):
     # In numpy we would do:
     # separation = [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11]
     # bins = [0, 1, 2, 5, 10]

@@ -116,7 +116,7 @@ ex['model']['enc_in_nodes'] = sum((
 ))
 ex['model']['enc_in_edges'] = sum((
     ex['model']['rbf_size'],
-    7 if ex['model']['separation_enc'] else 0,
+    {'absent': 0, 'scalar': 1, 'categorical': 7}[ex['model']['separation_enc']],
 ))
 
 # Session computed fields
