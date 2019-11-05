@@ -36,6 +36,9 @@ loss:
   global_gdtts:
     name: mse
     weight: 1
+  ranking:
+    name: rank
+    weight: 0
 session:
   max_epochs: 35
   batch_size: 400
