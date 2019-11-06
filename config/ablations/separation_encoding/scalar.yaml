@@ -3,7 +3,7 @@ tags:
   - ablation
   - sepenc
   - scalar
-comment: using peptide bonds and contacts (cutoff 8), residue emb (64D), distance RBF (32 bases), separation encoded as categorical
+comment: using peptide bonds and contacts (cutoff 8), residue emb (64D), distance RBF (32 bases), separation is a scalar
 data:
   cutoff: 8
   partial_entropy: true
@@ -17,7 +17,7 @@ model:
   min_dist: 0
   max_dist: 20
   rbf_size: 32
-  separation_enc: categorical
+  separation_enc: scalar
   residue_emb_size: 64
   mp_in_edges: 128
   mp_in_nodes: 512
