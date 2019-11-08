@@ -115,7 +115,7 @@ ex['model']['enc_in_nodes'] = sum((
     15 if ex['data']['dssp'] else 0,
 ))
 ex['model']['enc_in_edges'] = sum((
-    ex['model']['rbf_size'],
+    {'absent': 0, 'scalar': 1, 'rbf': ex['model']['rbf_size']}[ex['model']['distance_enc']],
     {'absent': 0, 'scalar': 1, 'categorical': 7}[ex['model']['separation_enc']],
 ))
 

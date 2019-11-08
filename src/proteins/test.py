@@ -32,7 +32,8 @@ ex = parse_args(config={
     'test': {
         'data': {
             'input': os.environ.get('DATA_FOLDER', './data'),
-            'output': os.environ.get('OUTPUT_FOLDER', './test')
+            'output': os.environ.get('OUTPUT_FOLDER', './test'),
+            'in_memory': True,
         },
         'batch_size': 1,
         'cpus': multiprocessing.cpu_count() - 1,

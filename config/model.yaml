@@ -5,6 +5,7 @@ max_dist: 20
 rbf_size: 16
 residue_emb_size: 64
 separation_enc: categorical
+distance_enc: rbf
 mp_in_edges: 128
 mp_in_nodes: 512
 mp_in_globals: 512

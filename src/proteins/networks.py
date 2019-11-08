@@ -19,6 +19,7 @@ class ProteinGN(nn.Module):
             rbf_size=16,
             residue_emb_size=32,
             separation_enc='categorical',
+            distance_enc='rbf',
             enc_in_nodes=83,
             enc_in_edges=8,
             layers=1,
@@ -36,7 +37,14 @@ class ProteinGN(nn.Module):
         preprocessing = OrderedDict()
 
         # Spatial distances
-        preprocessing['rbf_distances'] = RbfDistEdges(min_dist, max_dist, rbf_size)
+        if distance_enc == 'absent':
+            pass
+        elif distance_enc == 'scalar':
+            preprocessing['distance_encoding'] = ScalarDistanceEncodingEdges()
+        elif distance_enc == 'rbf':
+            preprocessing['distance_encoding'] = RbfDistanceEncodingEdges(min_dist, max_dist, rbf_size)
+        else:
+            raise ValueError(f'Invalid `distance_enc`: {distance_enc}')
 
         # Sequential distances
         if separation_enc == 'absent':
@@ -60,7 +68,7 @@ class ProteinGN(nn.Module):
         # Node feature shape: N -> mp_in_nodes//2 -> mp_in_nodes
         # Global feature shape: None -> mp_in_globals
         self.encoder = nn.Sequential(OrderedDict({
-            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=enc_in_edges),
+            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=enc_in_edges if enc_in_edges > 0 else None),
             'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
             'edge1_bn': tg.EdgeBatchNorm(num_features=mp_in_edges//2) if batch_norm else nn.Identity(),
             'edge1_relu': tg.EdgeReLU(),
@@ -188,7 +196,7 @@ class ProteinGNNoGlobal(nn.Module):
         self.layers = []
 
         self.preprocessing = nn.Sequential(OrderedDict({
-            'rbf_distances': RbfDistEdges(min_dist, max_dist, rbf_size),
+            'rbf_distances': RbfDistanceEncodingEdges(min_dist, max_dist, rbf_size),
             'separation_encoding': SeparationEncodingEdges() if separation_enc else nn.Identity(),
             'residue_embedding': ResidueEmbedding(residue_emb_size),
             'duplicate_edges': DuplicateEdges(),
@@ -295,7 +303,21 @@ class ResidueEmbedding(nn.Embedding):
         )
 
 
-class RbfDistEdges(nn.Module):
+class ScalarDistanceEncodingEdges(nn.Module):
+    def forward(self, decoys: DecoyBatch):
+        # Distances are encoded as simple scalars
+        decoys = decoys.evolve(
+            distances=None,
+            edge_features=torch.cat((
+                decoys.distances[:, None],
+                decoys.edge_features
+            ), dim=1),
+        )
+
+        return decoys
+
+
+class RbfDistanceEncodingEdges(nn.Module):
     def __init__(self, min_dist: float, max_dist: float, size: int):
         super().__init__()
         if not 0 <= min_dist < max_dist:
