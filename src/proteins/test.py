@@ -185,7 +185,8 @@ ot = itemgetter('results')
 local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='LDDT', output_transform=ot)
 local_lddt_metrics.attach(tester, 'local_lddt')
 
-global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='GDT-TS', output_transform=ot)
+global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='GDT-TS', output_transform=ot,
+                                     figures=('hist', 'paged_funnels', 'recall_at_k', 'ndcg_at_k'))
 global_gdtts_metrics.attach(tester, 'global_gdtts')
 
 # During testing, the progress bar shows the number of batches processed so far

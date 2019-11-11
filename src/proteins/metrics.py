@@ -169,6 +169,7 @@ class GlobalMetrics(ignite.metrics.Metric):
     FIGURES = (
         'hist',
         'funnel',
+        'paged_funnels',
         'recall_at_k',
         'ndcg_at_k',
     )
@@ -201,8 +202,8 @@ class GlobalMetrics(ignite.metrics.Metric):
 
     @staticmethod
     def _funnel(grouped, metric, ncols):
-        ncols = min(grouped.ngroups, ncols)
-        nrows = int(np.ceil(grouped.ngroups / ncols))
+        ncols = min(len(grouped), ncols)
+        nrows = int(np.ceil(len(grouped) / ncols))
         fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows), dpi=100, squeeze=False,
                                  gridspec_kw={'hspace': 0.1, 'wspace': 0.005})
 
@@ -242,7 +243,7 @@ class GlobalMetrics(ignite.metrics.Metric):
         legend._legend_box.align = 'left'
 
         # Hide unused axes
-        for ax in axes.ravel()[grouped.ngroups:]:
+        for ax in axes.ravel()[len(grouped):]:
             ax.set_visible(False)
 
         # fig.show()
@@ -331,6 +332,13 @@ class GlobalMetrics(ignite.metrics.Metric):
 
         if 'funnel' in self.figures:
             figures['funnel'] = self._funnel(grouped, metric=self.title, ncols=6)
+        if 'paged_funnels' in self.figures:
+            # Funnels are drawn in pages of 6 columns and 8 rows each
+            npages = int(np.ceil(len(grouped) / (6 * 8)))
+            grouped_list = [(target_name, target_df) for target_name, target_df in grouped]
+            for i in range(npages):
+                grouped_page = grouped_list[i * (6 * 8): (i + 1) * (6 * 8)]
+                figures[f'funnel_{i}'] = self._funnel(grouped_page, metric=self.title, ncols=6)
         if 'recall_at_k' in self.figures:
             figures['recall_at_k'] = self._recall_at_k(grouped, max_k=25, title=self.title)
         if 'ndcg_at_k' in self.figures:
@@ -436,168 +444,3 @@ class ProteinAverageLosses(Metric):
     def completed(self, engine, **ignored_kwargs):
         result = self.compute()
         engine.state.losses.update(result)
-
-
-# def test():
-#     """Go through the validation dataset, output fake predictions using random noise,
-#     compute all metrics of interest using ignite-based classes and good old pandas,
-#     make sure that the results and the figures match."""
-#     import os
-#     from pathlib import Path
-#
-#     import pyaml
-#     import torch.utils.data
-#     import torchgraphs as tg
-#     from tqdm import tqdm
-#
-#     from .config import flatten_dict
-#     from .dataset import ProteinQualityDataset, RemoveEdges
-#
-#     samples_df = pd.read_csv(Path(os.environ.get('DATA_FOLDER', './data')) / 'samples.csv')
-#     samples_df['path'] = [Path(os.environ.get('DATA_FOLDER', './data')) / p for p in samples_df['path']]
-#     dataloader = torch.utils.data.DataLoader(
-#         ProteinQualityDataset(samples_df, transforms=[RemoveEdges(cutoff=6)]),
-#         shuffle=True, batch_size=100, collate_fn=tg.GraphBatch.collate
-#     )
-#
-#     local_lddt_metrics = LocalMetrics(features.Output.Node.LOCAL_LDDT, title='LDDT')
-#     global_lddt_metrics = GlobalMetrics(features.Output.Global.GLOBAL_LDDT, title='LDDT')
-#     global_gdtts_metrics = GlobalMetrics(features.Output.Global.GLOBAL_GDTTS, title='GDT-TS')
-#
-#     device = 'cuda'
-#     nodes_df = defaultdict(list)
-#     graphs_df = defaultdict(list)
-#
-#     for target_name, model_name, graphs, targets in tqdm(dataloader):
-#         graphs = graphs.to(device)
-#         targets = targets.to(device)
-#
-#         node_features = targets.node_features[:, :features.Output.Node.LENGTH]
-#         node_features = node_features + .1 * torch.randn_like(node_features)
-#         node_features = (np.round(2 * node_features.cpu(), decimals=1) / 2).clamp(min=0, max=1)
-#         global_features = targets.global_features[:, :features.Output.Global.LENGTH]
-#         global_features = global_features + .1 * torch.randn_like(global_features)
-#         global_features = (np.round(2 * global_features.cpu(), decimals=1) / 2).clamp(min=0, max=1)
-#         preds = graphs.evolve(node_features=node_features.to(device), global_features=global_features.to(device))
-#
-#         local_lddt_metrics.update((target_name, model_name, preds, targets))
-#         global_lddt_metrics.update((target_name, model_name, preds, targets))
-#         global_gdtts_metrics.update((target_name, model_name, preds, targets))
-#
-#         nodes_df['ProteinName'].append(np.repeat(np.array(target_name), graphs.num_nodes_by_graph.cpu()))
-#         nodes_df['ModelName'].append(np.repeat(np.array(model_name), graphs.num_nodes_by_graph.cpu()))
-#         nodes_df['NodeId'].append(np.concatenate([np.arange(n) for n in graphs.num_nodes_by_graph.cpu()]))
-#         nodes_df['LocalLddtTrue'].append(targets.node_features[:, features.Output.Node.LOCAL_LDDT].cpu())
-#         nodes_df['LocalLddtPred'].append(preds.node_features[:, features.Output.Node.LOCAL_LDDT].cpu())
-#
-#         graphs_df['ProteinName'].append(np.array(target_name))
-#         graphs_df['ModelName'].append(np.array(model_name))
-#         graphs_df['GlobalLddtTrue'].append(targets.global_features[:, features.Output.Global.GLOBAL_LDDT].cpu())
-#         graphs_df['GlobalLddtPred'].append(preds.global_features[:, features.Output.Global.GLOBAL_LDDT].cpu())
-#         graphs_df['GlobalGdttsTrue'].append(targets.global_features[:, features.Output.Global.GLOBAL_GDTTS].cpu())
-#         graphs_df['GlobalGdttsPred'].append(preds.global_features[:, features.Output.Global.GLOBAL_GDTTS].cpu())
-#
-#     local_lddt_metrics = local_lddt_metrics.compute()
-#     global_lddt_metrics = global_lddt_metrics.compute()
-#     global_gdtts_metrics = global_gdtts_metrics.compute()
-#     metrics = {
-#         'local_lddt': local_lddt_metrics['metrics'],
-#         'global_lddt': global_lddt_metrics['metrics'],
-#         'global_gdtts': global_gdtts_metrics['metrics'],
-#     }
-#     figures = {
-#         'local_lddt': local_lddt_metrics['figures'],
-#         'global_lddt': global_lddt_metrics['figures'],
-#         'global_gdtts': global_gdtts_metrics['figures'],
-#     }
-#
-#     print(pyaml.dump({'ignite': metrics}, safe=True, sort_dicts=False))
-#     for keys, fig in flatten_dict(figures):
-#         fig.show()
-#
-#     figures['global_lddt']['funnel'].savefig('/home/federico/Desktop/fig.png')
-#     figures['global_lddt']['funnel'].savefig('/home/federico/Desktop/fig.pdf')
-#
-#     metrics = defaultdict(dict)
-#     nodes_df = pd.DataFrame({k: np.concatenate(v) for k, v in nodes_df.items()}) \
-#         .query('ModelName != "native"')\
-#         .dropna(subset=['LocalLddtTrue'])
-#     graphs_df = pd.DataFrame({k: np.concatenate(v) for k, v in graphs_df.items()}) \
-#         .query('ModelName != "native"')
-#
-#     metrics['local_lddt']['rmse'] = rmse(nodes_df['LocalLddtPred'], nodes_df['LocalLddtTrue'])
-#     metrics['local_lddt']['pearson'] = pearson(nodes_df['LocalLddtPred'], nodes_df['LocalLddtTrue'])
-#     metrics['local_lddt']['per_model_pearson'] = nodes_df.groupby(['ProteinName', 'ModelName']) \
-#         .apply(lambda df: pearson(df['LocalLddtPred'], df['LocalLddtTrue'])) \
-#         .mean()
-#
-#     metrics['global_lddt']['rmse'] = rmse(graphs_df['GlobalLddtPred'], graphs_df['GlobalLddtTrue'])
-#     metrics['global_lddt']['pearson'] = pearson(graphs_df['GlobalLddtPred'], graphs_df['GlobalLddtTrue'])
-#     metrics['global_lddt']['spearman'] = spearmanr(graphs_df['GlobalLddtPred'], graphs_df['GlobalLddtTrue'])
-#     metrics['global_lddt']['kendall'] = kendalltau(graphs_df['GlobalLddtPred'], graphs_df['GlobalLddtTrue'])
-#     metrics['global_lddt']['per_target_pearson'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: pearson(df['GlobalLddtPred'], df['GlobalLddtTrue'])) \
-#         .mean()
-#     metrics['global_lddt']['per_target_spearman'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: spearmanr(df['GlobalLddtPred'], df['GlobalLddtTrue'])) \
-#         .mean()
-#     metrics['global_lddt']['per_target_kendall'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: kendalltau(df['GlobalLddtPred'], df['GlobalLddtTrue'])) \
-#         .mean()
-#     metrics['global_lddt']['first_rank_loss'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: first_rank_loss(df['GlobalLddtPred'], df['GlobalLddtTrue'])) \
-#         .mean()
-#
-#     metrics['global_gdtts']['rmse'] = rmse(graphs_df['GlobalGdttsPred'], graphs_df['GlobalGdttsTrue'])
-#     metrics['global_gdtts']['r2'] = r2_score(graphs_df['GlobalGdttsPred'], graphs_df['GlobalGdttsTrue'])
-#     metrics['global_gdtts']['pearson'] = pearson(graphs_df['GlobalGdttsPred'], graphs_df['GlobalGdttsTrue'])
-#     metrics['global_gdtts']['spearman'] = spearmanr(graphs_df['GlobalGdttsPred'], graphs_df['GlobalGdttsTrue'])
-#     metrics['global_gdtts']['kendall'] = kendalltau(graphs_df['GlobalGdttsPred'], graphs_df['GlobalGdttsTrue'])
-#     metrics['global_gdtts']['per_target_pearson'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: pearson(df['GlobalGdttsPred'], df['GlobalGdttsTrue'])) \
-#         .mean()
-#     metrics['global_gdtts']['per_target_spearman'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: spearmanr(df['GlobalGdttsPred'], df['GlobalGdttsTrue'])) \
-#         .mean()
-#     metrics['global_gdtts']['per_target_kendall'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: kendalltau(df['GlobalGdttsPred'], df['GlobalGdttsTrue'])) \
-#         .mean()
-#     metrics['global_gdtts']['first_rank_loss'] = graphs_df.groupby('ProteinName') \
-#         .apply(lambda df: first_rank_loss(df['GlobalGdttsPred'], df['GlobalGdttsTrue'])) \
-#         .mean()
-#
-#     print(pyaml.dump({'pandas': metrics}, safe=True, sort_dicts=False))
-#
-#     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=100)
-#     ax.hist2d(nodes_df['LocalLddtTrue'], nodes_df['LocalLddtPred'], bins=np.linspace(0, 1, 100+1))
-#     ax.set_title(f'Local LDDT $R$: {metrics["local_lddt"]["pearson"]:.3f} $R_{{model}}$: {metrics["local_lddt"]["per_model_pearson"]:.3f}')
-#     ax.set_xlabel('True')
-#     ax.set_ylabel('Predicted')
-#     ax.plot([0, 1], [0, 1], color='red', linestyle='--')
-#     ax.set_xlim(0, 1)
-#     ax.set_ylim(0, 1)
-#     fig.show()
-#
-#     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=100)
-#     ax.hist2d(graphs_df['GlobalLddtTrue'], graphs_df['GlobalLddtPred'], bins=np.linspace(0, 1, 100+1))
-#     ax.set_title(f'Global LDDT R: {metrics["global_lddt"]["pearson"]:.3f} $R_{{target}}$: {metrics["global_lddt"]["per_target_pearson"]:.3f}')
-#     ax.set_xlabel('True')
-#     ax.set_ylabel('Predicted')
-#     ax.plot([0, 1], [0, 1], color='red', linestyle='--')
-#     ax.set_xlim(0, 1)
-#     ax.set_ylim(0, 1)
-#     fig.show()
-#
-#     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=100)
-#     ax.hist2d(graphs_df['GlobalGdttsTrue'], graphs_df['GlobalGdttsPred'], bins=np.linspace(0, 1, 100+1))
-#     ax.set_title(f'Global GDT_TS R: {metrics["global_gdtts"]["pearson"]:.3f} $R_{{target}}$: {metrics["global_gdtts"]["per_target_pearson"]:.3f}')
-#     ax.set_xlabel('True')
-#     ax.set_ylabel('Predicted')
-#     ax.plot([0, 1], [0, 1], color='red', linestyle='--')
-#     ax.set_xlim(0, 1)
-#     ax.set_ylim(0, 1)
-#     fig.show()
-#
-#
-# if __name__ == '__main__':
-#     test()
