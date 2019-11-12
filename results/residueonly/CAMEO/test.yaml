@@ -1,0 +1,154 @@
+name: proteins
+tags:
+- residueonly
+- l8
+- 128-512-512
+- 16-64-64
+- dr.1
+- bnno
+- lr.001
+- wd.00001
+- ll1
+- ll5
+- co8
+fullname: residueonly_l8_128-512-512_16-64-64_dr.1_bnno_lr.001_wd.00001_ll1_ll5_co8_priceless_hawking
+completed_epochs: 35
+samples: 3713815
+data:
+  cutoff: 8
+  partial_entropy: false
+  self_information: false
+  dssp: false
+  residues: true
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 8
+  dropout: 0.1
+  batch_norm: false
+  min_dist: 0
+  max_dist: 20
+  rbf_size: 32
+  separation_enc: categorical
+  distance_enc: rbf
+  residue_emb_size: 64
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 512
+  mp_out_edges: 16
+  mp_out_nodes: 64
+  mp_out_globals: 64
+  enc_in_nodes: 64
+  enc_in_edges: 39
+  state_dict: runs/residueonly_l8_128-512-512_16-64-64_dr.1_bnno_lr.001_wd.00001_ll1_ll5_co8_priceless_hawking/model.latest.pt
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 5
+  global_gdtts:
+    name: mse
+    weight: 1
+  ranking:
+    name: rank
+    weight: 0
+history:
+- completed_epochs: 35
+  samples: 3713815
+  max_epochs: 35
+  batch_size: 400
+  seed: 2269
+  cpus: 1
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-11-11 12:09:35.507680
+  datetime_completed: 2019-11-11 14:58:01.621341
+  data:
+    in_memory: true
+    sampler: random
+    trainval:
+    - /local_storage/datasets/protein_quality_assessment/CASP7
+    - /local_storage/datasets/protein_quality_assessment/CASP8
+    - /local_storage/datasets/protein_quality_assessment/CASP9
+    - /local_storage/datasets/protein_quality_assessment/CASP10
+    split: 35
+  logs:
+    folder: /Midgard/home/fbaldassarre/experiments/proteins/runs
+  checkpoint: 5
+  metric:
+    local_lddt:
+      rmse: 0.1404277180853816
+      pearson: 0.7944571427417242
+      per_model_pearson: 0.5727761295427368
+    global_gdtts:
+      rmse: 0.13458889722824097
+      pearson: 0.8416948765131066
+      spearman: 0.8406524416483697
+      kendall: 0.6434723726140676
+      ranking: 0.009428419385637555
+      per_target_pearson: 0.7552853087270961
+      per_target_spearman: 0.6391942713027721
+      per_target_kendall: 0.4794267567202279
+      first_rank_loss: 0.0766771388905389
+  misc:
+    parameters: 3001187
+    samples:
+      train: 106109
+      val: 9447
+    targets:
+      train: 402
+      val: 35
+  git: null
+  cuda:
+    driver: '430.50'
+    devices:
+      cuda:0:
+        model: GeForce GTX 1080 Ti
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 11178 MiB
+        memory_used_max: 4694 MiB
+        memory_cached_max: 10926 MiB
+test:
+  data:
+    input: data/CAMEO
+    output: results/residueonly/CAMEO
+    in_memory: true
+  batch_size: 200
+  cpus: 11
+  device: cuda
+  samples: 20851
+  status: COMPLETED
+  datetime_started: 2019-11-11 15:36:49.898112
+  datetime_completed: 2019-11-11 15:40:37.381151
+  metric:
+    local_lddt:
+      rmse: 0.16887808844588506
+      pearson: 0.6993149732489691
+      per_model_pearson: 0.560039501991045
+    global_gdtts:
+      rmse: 0.16997237503528595
+      pearson: 0.7254175698939913
+      spearman: 0.6751234669233556
+      kendall: 0.4966611361038857
+      ranking: 0.008062603919371653
+      per_target_pearson: 0.58505323381961
+      per_target_spearman: 0.5048414482558249
+      per_target_kendall: 0.37947604902786813
+      first_rank_loss: 0.0463409495349277
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: 5be89df2715e102a72cae8cc689f27c3a32e174d
+    dirty: false
+  cuda:
+    driver: '418.43'
+    devices:
+      cuda:0:
+        model: GeForce GTX 1050 Ti with Max-Q Design
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 4042 MiB
+        memory_used_max: 2091 MiB
+        memory_cached_max: 3632 MiB

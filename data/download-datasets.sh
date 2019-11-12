@@ -16,3 +16,4 @@ wget 'https://www.dropbox.com/sh/gs4owu8jh0qmbde/AAC6GuiShPSoUgNeZCRTCpsOa/data_
 wget 'https://www.dropbox.com/sh/gs4owu8jh0qmbde/AADkxl3s0t6asms5b9S0jWoNa/data_CASP12_repacked.h5?raw=1'       -O CASP12.h5        # md5sum: a6f73329c570171a71fc3c1bdf7a17f7
 wget 'https://www.dropbox.com/sh/gs4owu8jh0qmbde/AAA0efr2FpxkjiyhjUpCobhUa/data_CASP12Stage1_repacked.h5?raw=1' -O CASP12_stage1.h5 # md5sum: 5c19ba09e8bc1bebc9b887e037a3ed17
 wget 'https://www.dropbox.com/sh/gs4owu8jh0qmbde/AACU-zIkZBszv72KD0Hq6SrNa/data_CASP12Stage2_repacked.h5?raw=1' -O CASP12_stage2.h5 # md5sum: 32a966a078ab4796aa8e4910a7c6d027
+wget 'https://www.dropbox.com/s/wnqlxhl3gs34u2j/test_casp13.v7.h5?dl=1'                                         -O CASP13.h5        # md5sum: 9b1b4fcc81e19f8335e1600047cb7cc0

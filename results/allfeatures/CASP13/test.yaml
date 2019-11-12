@@ -1,0 +1,160 @@
+name: proteins
+tags:
+- l6
+- 128-512-512
+- 16-64-32
+- res64
+- rbf32
+- sepcategorical
+- dr.2
+- bnno
+- lr.001
+- wd.00001
+- ll1
+- lg1
+- lr0
+- co8
+- allfeats
+fullname: l6_128-512-512_16-64-32_res64_rbf32_sepcategorical_dr.2_bnno_lr.001_wd.00001_ll1_lg1_lr0_co8_allfeats_wonderful_mclean
+completed_epochs: 35
+samples: 3720395
+data:
+  cutoff: 8
+  partial_entropy: true
+  self_information: true
+  dssp: true
+  residues: true
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 6
+  dropout: 0.2
+  batch_norm: false
+  min_dist: 0
+  max_dist: 20
+  rbf_size: 32
+  separation_enc: categorical
+  residue_emb_size: 64
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 512
+  mp_out_edges: 16
+  mp_out_nodes: 64
+  mp_out_globals: 32
+  enc_in_nodes: 125
+  enc_in_edges: 39
+  state_dict: runs/l6_128-512-512_16-64-32_res64_rbf32_sepcategorical_dr.2_bnno_lr.001_wd.00001_ll1_lg1_lr0_co8_allfeats_wonderful_mclean/model.latest.pt
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 1
+  global_gdtts:
+    name: mse
+    weight: 1
+  ranking:
+    name: rank
+    weight: 0
+history:
+- completed_epochs: 35
+  samples: 3720395
+  max_epochs: 35
+  batch_size: 400
+  seed: 4103
+  cpus: 1
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-11-06 18:25:24.570336
+  datetime_completed: 2019-11-06 20:22:41.390944
+  data:
+    in_memory: true
+    sampler: random
+    trainval:
+    - /local_storage/datasets/protein_quality_assessment/CASP7
+    - /local_storage/datasets/protein_quality_assessment/CASP8
+    - /local_storage/datasets/protein_quality_assessment/CASP9
+    - /local_storage/datasets/protein_quality_assessment/CASP10
+    split: 35
+  logs:
+    folder: /Midgard/home/fbaldassarre/experiments/proteins/runs
+  checkpoint: 5
+  metric:
+    local_lddt:
+      rmse: 0.13181216851799168
+      pearson: 0.8344620253382765
+      per_model_pearson: 0.6435322325420053
+    global_gdtts:
+      rmse: 0.11670779436826706
+      pearson: 0.9175144533579163
+      spearman: 0.8826884530034856
+      kendall: 0.710336092019118
+      ranking: 0.006357765623501369
+      per_target_pearson: 0.9178809118897716
+      per_target_spearman: 0.776107325722665
+      per_target_kendall: 0.608662039869638
+      first_rank_loss: 0.042937144211360384
+  misc:
+    parameters: 1462179
+    samples:
+      train: 106297
+      val: 9259
+    targets:
+      train: 402
+      val: 35
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: fd32c9c266e88dcaa1c922851b68d619ffc07a9c
+    dirty: false
+  cuda:
+    driver: '430.50'
+    devices:
+      cuda:0:
+        model: TITAN Xp
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 12196 MiB
+        memory_used_max: 3751 MiB
+        memory_cached_max: 12067 MiB
+test:
+  data:
+    input: data/CASP13
+    output: results/allfeatures/CASP13
+    in_memory: true
+  batch_size: 200
+  cpus: 1
+  device: cuda
+  samples: 7433
+  status: COMPLETED
+  datetime_started: 2019-11-12 20:18:33.365214
+  datetime_completed: 2019-11-12 20:19:27.256982
+  metric:
+    local_lddt:
+      rmse: 0.14216214281084982
+      pearson: 0.7638838062894927
+      per_model_pearson: 0.5388963134254773
+    global_gdtts:
+      rmse: 0.12326034903526306
+      pearson: 0.8456849999484228
+      spearman: 0.8397946217000953
+      kendall: 0.647184944553908
+      ranking: 0.009815772113047148
+      per_target_pearson: 0.8344072646689235
+      per_target_spearman: 0.7986856719617319
+      per_target_kendall: 0.6162400428016618
+      first_rank_loss: 0.09259474199069173
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: 5be89df2715e102a72cae8cc689f27c3a32e174d
+    dirty: false
+  cuda:
+    driver: '418.43'
+    devices:
+      cuda:0:
+        model: GeForce GTX 1050 Ti with Max-Q Design
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 4042 MiB
+        memory_used_max: 2649 MiB
+        memory_cached_max: 3577 MiB
