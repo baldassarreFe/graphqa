@@ -7,7 +7,7 @@ df = []
 
 test_folder = Path('../../results/allfeatures')
 for d in test_folder.iterdir():
-    if not d.is_dir() or not d.name.startswith('CASP'):
+    if not d.joinpath('test.yaml').exists():
         continue
     with d.joinpath('test.yaml').open() as f:
         results = yaml.safe_load(f)['test']['metric']
@@ -39,7 +39,7 @@ for d in test_folder.iterdir():
             
 test_folder = Path('../../results/residueonly')
 for d in test_folder.iterdir():
-    if not d.is_dir() or not d.name.startswith('CASP'):
+    if not d.joinpath('test.yaml').exists():
         continue
     with d.joinpath('test.yaml').open() as f:
         results = yaml.safe_load(f)['test']['metric']
@@ -61,7 +61,7 @@ for d in test_folder.iterdir():
                 continue
             df.append({
                 'AsReportedBy': 'Ours',
-                'Method': 'GraphQA-RES',
+                'Method': 'GraphQA-RAW',
                 'TrainValSets': 'CASP 7+8+9+10',
                 'TestSet': d.name.replace('CASP', 'CASP ').replace('_stage', ' stage '),
                 'Output': output_type,
