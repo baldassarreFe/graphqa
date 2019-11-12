@@ -48,7 +48,8 @@ min_dist=0
 max_dist=20
 rbf_size=16
 residue_emb_size=64
-separation_enc=yes
+separation_enc=categorical
+distance_enc=rbf
 mp_in_edges=128
 mp_in_nodes=512
 mp_in_globals=512
@@ -88,6 +89,7 @@ tags+=("co${cutoff}")
 tags+=("res${residue_emb_size}")
 tags+=("rbf${rbf_size}")
 tags+=("sep${separation_enc}")
+tags+=("dist${distance_enc}")
 tags="[$(IFS=, ; echo "${tags[*]}")]"
 
 python -m proteins.train \
@@ -107,6 +109,7 @@ python -m proteins.train \
         rbf_size="${rbf_size}" \
         residue_emb_size="${residue_emb_size}" \
         separation_enc="${separation_enc}" \
+        distance_enc="${distance_enc}" \
         mp_in_edges="${mp_in_edges}" \
         mp_in_nodes="${mp_in_nodes}" \
         mp_in_globals="${mp_in_globals}" \
@@ -155,28 +158,32 @@ done
 ## Testing
 Test GraphQA with all features (residues, multiple-sequence alignment, DSSP):
 ```bash
-RUN_PATH='runs/l6_128-512-512_16-64-32_dr.2_bnno_lr.001_wd.00001_llw5_llbno_co8_si15_seyes_eb0_es0_dreamy_pare'
-for data in $(find 'data/' -maxdepth 1 -mindepth 1 -type d -name 'CASP*'); do
+RUN_PATH='runs/l6_128-512-512_16-64-32_res64_rbf32_sepcategorical_dr.2_bnno_lr.001_wd.00001_ll1_lg1_lr0_co8_allfeats_wonderful_mclean'
+for data in $(find 'data/' -maxdepth 1 -mindepth 1 -type d); do
     python -m proteins.test \
       "${RUN_PATH}/experiment.latest.yaml" \
       --model state_dict="${RUN_PATH}/model.latest.pt" \
       --test \
         data.input="${data}" \
         data.output="results/allfeatures/$(basename "${data}")" \
+        data.in_memory=yes \
+        cpus=1 \
         batch_size=200 
 done
 ```
 
 Test GraphQA with residue identity features only:
 ```bash
-RUN_PATH='runs/residueonly_l8_128-512-512_16-64-64_dr.1_bnno_lr.001_wd.00001_llw5_llbno_co8_si15_seyes_eb0_es0_fervent_lichterman'
-for data in $(find 'data/' -maxdepth 1 -mindepth 1 -type d -name 'CASP*'); do
+RUN_PATH='runs/residueonly_l8_128-512-512_16-64-64_dr.1_bnno_lr.001_wd.00001_ll1_ll5_co8_priceless_hawking'
+for data in $(find 'data/' -maxdepth 1 -mindepth 1 -type d); do
     python -m proteins.test \
       "${RUN_PATH}/experiment.latest.yaml" \
       --model state_dict="${RUN_PATH}/model.latest.pt" \
       --test \
         data.input="${data}" \
         data.output="results/residueonly/$(basename "${data}")" \
+        data.in_memory=yes \
+        cpus=1 \
         batch_size=200 
 done
 ```
