@@ -1,0 +1,164 @@
+T0817 ABC transporter substrate-binding protein, Sinorhizobium meliloti, 525 residues
+T0828 MtxA, Magnetospirillum gryphiswaldense, 325 residues
+T0764 SP18347A - BDI_1566, Parabacteroides distasonis ATCC 8503, 341 residues
+T0854 FP7307A, Geobacter sulfurred, 212 residues
+T0855 SP18870A_t, , 119 residues
+T0856 HERC1, Homo sapiens, 159 residues
+T0857 GS13171A, , 105 residues
+T0858 BT3312, , 494 residues
+T0859 AP205, Acinotebacter Phage AP205, 133 residues
+T0860 fibre head domain, Raptor adeovirus 1, 137 residues
+T0861 CysK, E. coli, 323 residues
+T0862 EC536toxin, E. coli, 239 residues
+T0864 TIPRL, Homo Sapiens, 246 residues
+T0865 CIN85, , 75 residues
+T0867 LAdV2 fibre 1 head domain, Lizard adenovirus 2, 104 residues
+T0868 CdiA-CT/CdiI-SU1, Burkholderia pseudomallei, 161 residues
+T0869 CdiA-CT/CdiI-SU2, Burkholderia pseudomallei, 120 residues
+T0870 ImuProt, E. coli, 138 residues
+T0871 TtnM, , 375 residues
+T0872 APC113182.105, , 91 residues
+T0873 TtnD, , 501 residues
+T0874 HPeV1 2A, human Parechovirus, 129 residues
+T0877 GP1, , 142 residues
+T0878 E264, , 358 residues
+T0879 APC113058.108, , 223 residues
+T0880 C-terminal domain of MAdV2 fibre, Mouse adenovirus 2, 193 residues
+T0881 GAdV4 fibre 2 head domain, Goose adenovirus 4, 202 residues
+T0882 , , 89 residues
+T0883 , , 237 residues
+T0884 CPX19-CdiAtox, , 75 residues
+T0885 CPX19-CdiI2, , 116 residues
+T0886 FliD, Pseudomonas aeruginosa PAO1, 346 residues
+T0887 DM77_3428, Burkholderia pseudomallei, 178 residues
+T0888 LAdV2 fibre 2 head domain, Lizard adenovirus 2, 121 residues
+T0889 5JO9, , 242 residues
+T0890 AAEL003864, Aedes aegypti (Yellowfever mosquito), 191 residues
+T0891 NEAT domain, Bacillus anthracis, 130 residues
+T0892 UDP-glucose-glycoprotein glucosyltransferase Nterm, Chaetomium thermophilum, 193 residues
+T0893 ccka_dhp_ca, , 242 residues
+T0894 CDI204-E1, E.Coli, 324 residues
+T0895 CDI204-E2, Escherichia coli STEC_O31 , 129 residues
+T0896 Bd0886, Bdellovibrio bacteriovorus , 486 residues
+T0897 ANL-KT-U1, , 285 residues
+T0898 ANL-KT-U2, , 169 residues
+T0899 Bd0412, Bdellovibrio bacteriovorus , 423 residues
+T0900 CEL5A, Ruminococcus flavefaciens, 106 residues
+T0901 Bd3099, Bdellovibrio bacteriovorus , 328 residues
+T0902 Capsid, Propionibacterium phage PA6, 315 residues
+T0903 LGN-SU1 , Drosophila melanogaster, 382 residues
+T0769 OR414, , 112 residues
+T0904 LGN-SU2 , Drosophila melanogaster, 341 residues
+T0905 Bd1483, Bdellovibrio bacteriovorus , 353 residues
+T0906 Fructose biphosphatase, Thermus thermophilus, 363 residues
+T0907 PorM_NB-SU1, , 315 residues
+T0908 PorM_NB-SU2, , 137 residues
+T0909 LH3, Snake adenovirus 1, 340 residues
+T0910 , , 345 residues
+T0912 BT1002, Bacteroides thetaiotaomicron, 624 residues
+T0913 F4ZCI3, Mycobacterium, 386 residues
+T0770 GS13194A - BT2259, Bacteroides thetaiotaomicron VPI-5482, 488 residues
+T0914 CPX209, , 337 residues
+T0915 CPX209-SU2, , 161 residues
+T0916 Gasdermin B C-terminal domain, homo sapiens, 166 residues
+T0917 , , 409 residues
+T0919 C-terminal part of Gp20, phage epsilon15, 306 residues
+T0920 DSM5692, Desulfohalobium retbaense, 568 residues
+T0921 Coh5, R. flavefaciens, 149 residues
+T0922 Doc5, R. flavefaciens, 96 residues
+T0923 CttA3, , 409 residues
+T0771 SP17061B - BACUNI_01052, Bacteroides uniformis ATCC 8492, 204 residues
+T0924 LAMB1, mouse, 89 residues
+T0925 LAMA1, mouse, 87 residues
+T0926 LAMB1, mouse, 88 residues
+T0927 LAMC1, mouse, 91 residues
+T0928 PREB, Homo Sapiens, 388 residues
+T0929 AP205, Acinotebacter Phage AP205, 133 residues
+T0931 DM77_3428, Burkholderia pseudomallei, 178 residues
+T0932 TIPRL, Homo Sapiens, 246 residues
+T0933 FliD, Pseudomonas aeruginosa PAO1, 346 residues
+T0772 GS13654A, , 265 residues
+T0934 Bd0886, Bdellovibrio bacteriovorus , 486 residues
+T0935 , , 177 residues
+T0936 ButhA.17069.a, , 205 residues
+T0937 BuceA.18021.a, , 369 residues
+T0938 BuamA.00863.e, , 259 residues
+T0939 BupsE.18009.a, , 212 residues
+T0940 MytuD.17056.b, , 271 residues
+T0941 Q6MH56_BDEBA, , 470 residues
+T0942 BepA, E. coli, 487 residues
+T0943 Pseudouridylate Synthase, Homo sapiens, 563 residues
+T0773 OR358, , 77 residues
+T0944 SRAP Domain of HMCES, Human, 277 residues
+T0946 C-terminal part of Gp20, phage epsilon15, 292 residues
+T0947 Bd0553, Bdellovibrio bacteriovorus, 220 residues
+T0948 Gasdermin B C-terminal domain, homo sapiens, 166 residues
+T0774 GS13876A - BVU_2522, Bacteroides vulgatus ATCC 8482, 379 residues
+T0774 GS13876A - BVU_2522, Bacteroides vulgatus ATCC 8482, 379 residues
+T0775 Long tail fibre protein gp34, Bacteriophage T4, 390 residues
+T0776 SP16962B - PARMER_00689, Parabacteroides merdae ATCC 43184, 256 residues
+T0777 MLP, platypus, 366 residues
+T0778 HR9155B, human, 127 residues
+T0779 MmR495A, , 68 residues
+T0783 ISPD, Homo sapiens, 411 residues
+T0785 snake adenovirus type 1 fibre head, snake, 115 residues
+T0786 MH12279D - BCE0241 , Bacillus cereus, 264 residues
+T0787 HIV-1 ENV TRIMER BG505 SOSIP.R6.664 (gp41 subunit), human, 153 residues
+T0788 HIV-1 ENV TRIMER BG505 SOSIP.R6.664 (gp120 subunit), , 481 residues
+T0789 EspG3_M_tuberculosis, human, 295 residues
+T0790 EspG3_M_smegmatis, human, 293 residues
+T0791 EspG5_M_tuberculosis, human, 300 residues
+T0792 Oskar-N, , 80 residues
+T0783 ISPD, Homo sapiens, 411 residues
+T0794 Vanin, Human, 470 residues
+T0795 raptor adenovirus fibre head, , 141 residues
+T0796 ABI14444.1, , 309 residues
+T0797 PKGII leucine zipper, , 44 residues
+T0798 Rab11b, , 198 residues
+T0799 pb1 plus chaperone domain, , 408 residues
+T0801 WecE, , 376 residues
+T0802 bovine adenovirus 4 fibre head, , 122 residues
+T0803  PilA1, Clostridium difficile, 139 residues
+T0759 HR9083A, Human, 109 residues
+T0804 murine adenovirus fibre head, , 202 residues
+T0805 nitroreductase Rv3368 , M.tuberculosis, 214 residues
+T0806 YaaA, E. coli K-12, 258 residues
+T0807 oxidoreductase, Klebsiella pneumoniae 342  , 284 residues
+T0808 SP16782A - BACCAC_02064, Bacteroides caccae , 418 residues
+T0809 FtsH-N, , 62 residues
+T0810 Q6MI90_BDEBA, Bdellovibrio bacteriovorus, 383 residues
+T0811 triosephosphate isomerase, Sinorhizobium meliloti, 255 residues
+T0812 laminin, human, 204 residues
+T0813 Prephenate dehydrogenase, Sinorhizobium meliloti, 307 residues
+T0815 SnoaL-like polyketide cyclase, Sinorhizobium meliloti 1021, 106 residues
+T0816 Af1502, Archaeoglobus fulgidus, 68 residues
+T0817 ABC transporter substrate-binding protein, Sinorhizobium meliloti, 525 residues
+T0819 histidinol-phosphate aminotransferase, Sinorhizobium meliloti, 373 residues
+T0820 VCID6010, Unknown, 140 residues
+T0822 Rf136, , 121 residues
+T0823 CC2504, Caulobacter crescentus , 296 residues
+T0824 nucB, , 110 residues
+T0825 WRAP-5, , 205 residues
+T0827 CC0948, Caulobacter crescentus , 407 residues
+T0828 MtxA, Magnetospirillum gryphiswaldense, 325 residues
+T0829 hypothetical protein YPO2434, Yersinia pestis CO92, 70 residues
+T0831 SHPRH, Homo sapiens, 419 residues
+T0832 APC108134, , 257 residues
+T0834 IDP04043, , 219 residues
+T0835 hypothetical protein YPO2471, Yersinia pestis CO92, 424 residues
+T0837 hypothetical protein YPO2654, Yersinia pestis CO92, 128 residues
+T0838 GS13694 - BVU_0573, Bacteroides vulgatus ATCC 8482, 154 residues
+T0839 SLA2, , 262 residues
+T0840 RON Receptor Tyrosine kinase subunit, , 669 residues
+T0841 Macrophage Stimulating Protein (MSP) subunit, , 253 residues
+T0842 BaheA.17330.a.B2.GE37429, , 146 residues
+T0843 Ats13, Micromonospora echinospora, 369 residues
+T0844 BaroA.17330.c.B4.GE37268, , 145 residues
+T0845 GS13402A - BT1487, Bacteroides thetaiotaomicron, 448 residues
+T0846 BaclA.17330.i.B2.GE37250, , 146 residues
+T0847 FAM83A, Homo sapiens, 176 residues
+T0849 APC103457, , 240 residues
+T0850 U1 protein, Bas-Congo virus, 190 residues
+T0851 CalS8, Micromonospora echinospora, 456 residues
+T0852 APC103154, , 414 residues
+T0853 SP18371B, , 152 residues

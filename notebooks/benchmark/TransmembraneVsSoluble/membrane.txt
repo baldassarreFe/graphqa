@@ -1,0 +1,31 @@
+T0863 STRA6, Danio rerio, 670 residues
+T0765 SP18632A - KPN_03524, Klebsiella pneumoniae subsp. pneumo, 128 residues
+T0866 MlaD, E. coli, 183 residues
+T0766 SP13297C - BACUNI_04292, Bacteroides uniformis ATCC 8492, 130 residues
+T0875 LV4 2A2, Ljungan virus, 122 residues
+T0876 AiV2A, Aichi virus, 136 residues
+T0767 SP17984B - SAV1486, Staphylococcus aureus subsp. aureus Mu50, 318 residues
+T0768 EL13177G - BACCAP_00569, Bacteroides capillosus ATCC 29799, 170 residues
+T0911 D galactonate transporter, E.coli, 445 residues
+T0918 PqiB , E. coli, 546 residues
+T0930 STRA6, Danio rerio, 670 residues
+T0945 DPAGT1, Human, 409 residues
+T0780 SP18142A - SP_1560, Streptococcus pneumoniae TIGR4, 259 residues
+T0781 SP17834A - RUMGNA_02398, Ruminococcus gnavus ATCC 29149, 420 residues
+T0782 SP13538A - BACUNI_01346, Bacteroides uniformis ATCC 8492, 135 residues
+T0780 SP18142A - SP_1560, Streptococcus pneumoniae TIGR4, 259 residues
+T0784 SP13500A - BACOVA_05332, Bacteroides ovatus ATCC 8483, 155 residues
+T0793 CcH, Staphylococcus aureus, 595 residues
+T0800 SP18282A - CLOSPO_03726 , Clostridium sporogenes, 247 residues
+T0760 SP13419B - BACCAC_02139, Bacteroides caccae ATCC 43185, 242 residues
+T0814 SP13528A, Parabacteroides merdae ATCC 43184, 424 residues
+T0818 SP17906A - EUBSIR_01394, Eubacterium siraeum, 166 residues
+T0821 SP13833A - PARMER_03812, Parabacteroides merdae, 275 residues
+T0761 SP17865A - CLOLEP_02462, Clostridium leptum DSM 753, 285 residues
+T0826 NmLptA, , 544 residues
+T0830 UDP transferase, , 575 residues
+T0833 SP13991A - BDI_3222 , Parabacteroides distasonis ATCC 8503, 136 residues
+T0762 SP17422O, Streptococcus mutans UA159, 280 residues
+T0836 CC_1988, , 204 residues
+T0763 SP18434A - CLOSPO_01618, Clostridium sporogenes ATCC 15579, 163 residues
+T0848 SP17471A, Bacillus subtilis, 354 residues
