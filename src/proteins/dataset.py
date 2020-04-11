@@ -23,6 +23,7 @@ class DecoyDataset(Dataset):
         ] = {}
 
         logger.debug(f"Starting to load graphs from {len(pth_paths)} pth files")
+        skipped = 0
         for p in pth_paths:
             target = torch.load(p)
             casp_ed = target["casp_ed"]
@@ -33,6 +34,21 @@ class DecoyDataset(Dataset):
 
             for decoy in target["graphs"]:
                 decoy_id = decoy.decoy_id
+                if torch.isnan(decoy.qa_local).all(dim=0, keepdim=True).any(dim=1):
+                    logger.warning(
+                        f"Decoy {target_id}/{decoy_id} contains all NaN values "
+                        f"in one of the columns of ground-truth local scores"
+                    )
+                    skipped += 1
+                    continue
+                if torch.isnan(decoy.qa_global).all(dim=1):
+                    logger.warning(
+                        f"Decoy {target_id}/{decoy_id} contains all NaN values "
+                        f"for its ground-truth global scores"
+                    )
+                    skipped += 1
+                    continue
+
                 self.add_target_feats_to_decoy(target, decoy)
                 self.decoys_by_target_id_and_decoy_id[(target_id, decoy_id)] = decoy
                 self.decoys_by_casp_ed_and_target_id_and_decoy_id[
@@ -42,7 +58,7 @@ class DecoyDataset(Dataset):
         if len(self) == 0:
             logger.warning("Empty dataset!")
         else:
-            logger.debug(f"Done loading {len(self)} graphs")
+            logger.debug(f"Done loading {len(self)} graphs, skipped {skipped}")
         self.transforms = transforms
 
     @staticmethod
@@ -87,9 +103,9 @@ class DecoyDataset(Dataset):
 
 
 def find_pth_files(
-    data_dir: Union[str, Path],
-    casp_ed: Optional[str] = None,
-    target_id: Optional[str] = None,
+        data_dir: Union[str, Path],
+        casp_ed: Optional[str] = None,
+        target_id: Optional[str] = None,
 ) -> Iterator[Path]:
     if casp_ed is None:
         casp_ed = "*"
@@ -98,9 +114,9 @@ def find_pth_files(
 
     return (
         Path(data_dir)
-        .expanduser()
-        .resolve()
-        .glob(f"CASP{casp_ed}/processed/{target_id}.pth")
+            .expanduser()
+            .resolve()
+            .glob(f"CASP{casp_ed}/processed/{target_id}.pth")
     )
 
 

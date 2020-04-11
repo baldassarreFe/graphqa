@@ -249,7 +249,11 @@ class MessagePassing(Module):
         x = self.node_fn(x)
 
         edge_global = torch_scatter.scatter(
-            edge_attr, batch[edge_index[0]], dim=0, dim_size=u.shape[0], reduce=self.scatter
+            edge_attr,
+            batch[edge_index[0]],
+            dim=0,
+            dim_size=u.shape[0],
+            reduce=self.scatter,
         )
         x_global = torch_scatter.scatter(
             x, batch, dim=0, dim_size=u.shape[0], reduce=self.scatter

@@ -58,3 +58,13 @@ def namespace_to_omegaconf(args: Namespace) -> OmegaConf:
     for k, v in args:
         config.merge_with_dotlist(f"{k}={v}")
     return config
+
+
+def main():
+    import sys
+    conf = parse_config(sys.argv[1:])
+    print(conf.pretty())
+
+
+if __name__ == "__main__":
+    main()
