@@ -355,7 +355,7 @@ def main():
         monitor=conf.checkpoint.monitor,
         mode=conf.checkpoint.mode,
         prefix="graphqa_",
-        period=conf.checkpoint.mode,
+        period=conf.checkpoint.period,
     )
     tb_logger = MyTensorBoardLogger(
         save_dir=Path(conf.checkpoint.folder), name=None, version=conf.fullname

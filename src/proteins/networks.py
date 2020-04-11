@@ -85,6 +85,7 @@ class GraphQA(Module):
                 out_global_feats=out_g,
                 dropout=conf.mp.dropout,
                 batch_norm=conf.mp.batch_norm,
+                scatter=conf.mp.scatter,
             )
             self.message_passing.append(mp)
             in_e, in_n, in_g = out_e, out_n, out_g
@@ -208,6 +209,7 @@ class MessagePassing(Module):
         out_global_feats: int,
         batch_norm: bool,
         dropout: float,
+        scatter: str,
     ):
         super().__init__()
         in_feats = in_node_feats + in_edge_feats + in_global_feats
@@ -231,6 +233,7 @@ class MessagePassing(Module):
             BatchNorm1d(out_global_feats) if batch_norm else Identity(),
             ReLU(),
         )
+        self.scatter = scatter
 
     def forward(self, x, edge_attr, edge_index, u, batch):
         x_src = x[edge_index[0]]
@@ -239,17 +242,17 @@ class MessagePassing(Module):
         edge_attr = self.edge_fn(edge_attr)
 
         msg_to_node = torch_scatter.scatter(
-            edge_attr, edge_index[1], dim=0, dim_size=x.shape[0], reduce="mean"
+            edge_attr, edge_index[1], dim=0, dim_size=x.shape[0], reduce=self.scatter
         )
         u_to_node = u[batch]
         x = torch.cat((x, msg_to_node, u_to_node), dim=1)
         x = self.node_fn(x)
 
         edge_global = torch_scatter.scatter(
-            edge_attr, batch[edge_index[0]], dim=0, dim_size=u.shape[0], reduce="mean"
+            edge_attr, batch[edge_index[0]], dim=0, dim_size=u.shape[0], reduce=self.scatter
         )
         x_global = torch_scatter.scatter(
-            x, batch, dim=0, dim_size=u.shape[0], reduce="mean"
+            x, batch, dim=0, dim_size=u.shape[0], reduce=self.scatter
         )
         u = torch.cat((edge_global, x_global, u), dim=1)
         u = self.global_fn(u)

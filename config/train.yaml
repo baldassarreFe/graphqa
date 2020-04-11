@@ -53,6 +53,7 @@ model:
     out_edge_feats: 16
     out_node_feats: 64
     out_global_feats: 32
+    scatter: mean
   readout:
     concat: yes
 
