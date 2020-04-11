@@ -1,401 +1,291 @@
-from collections import OrderedDict
+from typing import Tuple
 
-import torch
-import torch.nn as nn
 import numpy as np
+import torch
+import torch_scatter
+from omegaconf import OmegaConf
+from torch_geometric.data import Batch
+from torch.nn import (
+    Module,
+    Sequential,
+    Linear,
+    ReLU,
+    Sigmoid,
+    Embedding,
+    ModuleDict,
+    ModuleList,
+    Dropout,
+    BatchNorm1d,
+    Identity,
+)
 
-import torchgraphs as tg
-from torchsearchsorted import searchsorted
 
-from proteins.data import DecoyBatch
-from . import features
-
-
-class ProteinGN(nn.Module):
-    def __init__(
-            self,
-            min_dist=0,
-            max_dist=20,
-            rbf_size=16,
-            residue_emb_size=32,
-            separation_enc='categorical',
-            distance_enc='rbf',
-            enc_in_nodes=83,
-            enc_in_edges=8,
-            layers=1,
-            mp_in_edges=8,
-            mp_in_nodes=16,
-            mp_in_globals=4,
-            mp_out_edges=64,
-            mp_out_nodes=128,
-            mp_out_globals=32,
-            dropout=0,
-            batch_norm=False,
-    ):
+class GraphQA(Module):
+    def __init__(self, conf: OmegaConf):
         super().__init__()
 
-        preprocessing = OrderedDict()
+        # Configuration
+        mp_in_edge_feats = (
+            conf.encoder.out_edge_feats + conf.embeddings.sep + conf.embeddings.rbf
+        )
+        mp_in_node_feats = (
+            conf.encoder.out_node_feats + conf.embeddings.aa + conf.embeddings.ss
+        )
 
-        # Spatial distances
-        if distance_enc == 'absent':
-            pass
-        elif distance_enc == 'scalar':
-            preprocessing['distance_encoding'] = ScalarDistanceEncodingEdges()
-        elif distance_enc == 'rbf':
-            preprocessing['distance_encoding'] = RbfDistanceEncodingEdges(min_dist, max_dist, rbf_size)
-        else:
-            raise ValueError(f'Invalid `distance_enc`: {distance_enc}')
+        mp_edge_feats = layer_sizes_exp2(
+            mp_in_edge_feats, conf.mp.out_edge_feats, conf.mp.layers, round_pow2=True
+        )
+        mp_node_feats = layer_sizes_exp2(
+            mp_in_node_feats, conf.mp.out_node_feats, conf.mp.layers, round_pow2=True
+        )
+        mp_global_feats = layer_sizes_exp2(
+            conf.mp.in_global_feats,
+            conf.mp.out_global_feats,
+            conf.mp.layers,
+            round_pow2=True,
+        )
+        mp_sizes = zip(mp_edge_feats, mp_node_feats, [0] + mp_global_feats[1:])
 
-        # Sequential distances
-        if separation_enc == 'absent':
-            pass
-        elif separation_enc == 'scalar':
-            preprocessing['separation_encoding'] = ScalarSeparationEncodingEdges()
-        elif separation_enc == 'categorical':
-            preprocessing['separation_encoding'] = CategoricalSeparationEncodingEdges()
-        else:
-            raise ValueError(f'Invalid `separation_enc`: {separation_enc}')
+        self.readout_concat = conf.readout.concat
 
-        # Embedding of the amino acid sequence
-        preprocessing['residue_embedding'] = ResidueEmbedding(residue_emb_size)
-
-        # Duplicate edges
-        preprocessing['duplicate_edges'] = DuplicateEdges()
-
-        self.preprocessing = nn.Sequential(preprocessing)
-
-        # Edge feature shape: E -> mp_in_edges//2 -> mp_in_edges
-        # Node feature shape: N -> mp_in_nodes//2 -> mp_in_nodes
-        # Global feature shape: None -> mp_in_globals
-        self.encoder = nn.Sequential(OrderedDict({
-            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=enc_in_edges if enc_in_edges > 0 else None),
-            'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'edge1_bn': tg.EdgeBatchNorm(num_features=mp_in_edges//2) if batch_norm else nn.Identity(),
-            'edge1_relu': tg.EdgeReLU(),
-            'edge2': tg.EdgeLinear(out_features=mp_in_edges, edge_features=mp_in_edges//2),
-            'edge2_dropout': tg.EdgeDropout(p=dropout),
-            'edge2_bn': tg.EdgeBatchNorm(num_features=mp_in_edges) if batch_norm else nn.Identity(),
-            'edge2_relu': tg.EdgeReLU(),
-
-            'node1': tg.NodeLinear(out_features=mp_in_nodes//2, node_features=enc_in_nodes),
-            'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'node1_bn': tg.NodeBatchNorm(num_features=mp_in_nodes//2) if batch_norm else nn.Identity(),
-            'node1_relu': tg.NodeReLU(),
-            'node2': tg.NodeLinear(out_features=mp_in_nodes, node_features=mp_in_nodes//2),
-            'node2_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'node2_bn': tg.NodeBatchNorm(num_features=mp_in_nodes) if batch_norm else nn.Identity(),
-            'node2_relu': tg.NodeReLU(),
-
-            'global': tg.GlobalLinear(out_features=mp_in_globals, bias=True),
-            'global_dropout': tg.GlobalDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'global_relu': tg.GlobalReLU(),
-        }))
-
-        # Message passing layers: edge, node and global shapes go
-        # from (mp_in_edges , mp_in_nodes , mp_in_globals )
-        # to   (mp_out_edges, mp_out_nodes, mp_out_globals)
-        # following powers of 2 in the number of steps given with the `layers` parameter (e.g. 10).
-
-        mp_layers_output_sizes = np.power(2, np.linspace(
-            np.log2((mp_in_edges, mp_in_nodes, mp_in_globals)),
-            np.log2((mp_out_edges, mp_out_nodes, mp_out_globals)),
-            num=layers, endpoint=False
-        ).round().astype(int)).tolist()[1:] + [(mp_out_edges, mp_out_nodes, mp_out_globals)]
-
-        layers_ = []
-        in_e, in_n, in_g = mp_in_edges, mp_in_nodes, mp_in_globals
-        for out_e, out_n, out_g in mp_layers_output_sizes:
-            layer = nn.Sequential(OrderedDict({
-                'edge1': tg.EdgeLinear(
-                    out_features=out_e,
-                    edge_features=in_e,
-                    sender_features=in_n,
-                    global_features=in_g
+        # Embeddings (aa type, dssp classification, separation, distance)
+        self.embeddings = ModuleDict(
+            {
+                "amino_acid": Embedding(
+                    num_embeddings=20, embedding_dim=conf.embeddings.aa
                 ),
-                'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-                'edge1_bn': tg.EdgeBatchNorm(num_features=out_e) if batch_norm else nn.Identity(),
-                'edge1_relu': tg.EdgeReLU(),
-
-                'node1': tg.NodeLinear(
-                    out_features=out_n,
-                    node_features=in_n,
-                    incoming_features=out_e,
-                    global_features=in_g,
-                    aggregation='mean',
+                "secondary_structure": Embedding(
+                    num_embeddings=9, embedding_dim=conf.embeddings.ss
                 ),
-                'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-                'node1_bn': tg.NodeBatchNorm(num_features=out_n) if batch_norm else nn.Identity(),
-                'node1_relu': tg.NodeReLU(),
-
-                'global1': tg.GlobalLinear(
-                    out_features=out_g,
-                    edge_features=out_e,
-                    node_features=out_n,
-                    global_features=in_g,
-                    aggregation='mean',
+                "separation": SeparationEmbedding(
+                    bins=(1, 2, 3, 4, 5, 10, 15), embedding_dim=conf.embeddings.sep
                 ),
-                'global1_dropout': tg.GlobalDropout(p=dropout) if dropout > 0 else nn.Identity(),
-                'global1_bn': tg.GlobalBatchNorm(num_features=out_g) if batch_norm else nn.Identity(),
-                'global1_relu': tg.GlobalReLU(),
-            }))
-            layers_.append(layer)
+                "distance_rbf": RbfDistanceEncoding(
+                    min_dist=0, max_dist=20, num_bases=conf.embeddings.rbf
+                ),
+            }
+        )
+
+        # Encoder (dssp features on the nodes and geometric features on the edges)
+        self.encoder = Encoder(
+            out_edge_feats=conf.encoder.out_edge_feats,
+            out_node_feats=conf.encoder.out_node_feats,
+        )
+
+        # Message passing
+        self.message_passing = ModuleList()
+        in_e, in_n, in_g = next(mp_sizes)
+        for out_e, out_n, out_g in mp_sizes:
+            mp = MessagePassing(
+                in_edge_feats=in_e,
+                in_node_feats=in_n,
+                in_global_feats=in_g,
+                out_edge_feats=out_e,
+                out_node_feats=out_n,
+                out_global_feats=out_g,
+                dropout=conf.mp.dropout,
+                batch_norm=conf.mp.batch_norm,
+            )
+            self.message_passing.append(mp)
             in_e, in_n, in_g = out_e, out_n, out_g
 
-        self.layers = torch.nn.Sequential(OrderedDict({f'layer_{i}': l for i, l in enumerate(layers_)}))
+        # Readout
+        if self.readout_concat:
+            in_n += mp_in_node_feats
+        self.readout = Readout(in_n, in_g)
 
-        # Node feature shape: mp_out_nodes -> 1
-        # Global feature shape: mp_out_globals -> 1
-        self.readout = nn.Sequential(OrderedDict({
-            'node': tg.NodeLinear(features.Output.Node.LENGTH, node_features=mp_out_nodes),
-            'node_sigmoid': tg.NodeSigmoid(),
+    @staticmethod
+    def prepare(graphs: Batch) -> Tuple[torch.Tensor, ...]:
+        aa = graphs.aa
+        msa_feats = graphs.msa_feats
+        x = graphs.x
+        edge_index = graphs.edge_index
+        edge_attr = graphs.edge_attr
+        secondary_structure = graphs.secondary_structure
+        batch = graphs.batch
 
-            # Use this to force global to depend on previous global features
-            'global': tg.GlobalLinear(features.Output.Global.LENGTH, global_features=mp_out_globals),
-            'global_sigmoid': tg.GlobalSigmoid()
+        return aa, msa_feats, x, edge_index, edge_attr, secondary_structure, batch
 
-            # Use this if we want global = w * mean(nodes) + b
-            # 'global': tg.GlobalLinear(features.Output.Global.LENGTH, node_features=1, aggregation='mean'),
-        }))
-
-    def forward(self, decoys: DecoyBatch):
-        decoys = self.preprocessing(decoys)
-        decoys = self.encoder(decoys)
-        decoys = self.layers(decoys)
-        decoys = self.readout(decoys)
-
-        return decoys.evolve(
-            node_features=decoys.node_features,
-            num_edges_by_graph=None,
-            edge_index_by_graph=None,
-            edge_features=None,
-            global_features=decoys.global_features,
-            senders=None,
-            receivers=None
-        )
-
-
-class ProteinGNNoGlobal(nn.Module):
-    def __init__(
-            self,
-            min_dist=0,
-            max_dist=20,
-            rbf_size=16,
-            residue_emb_size=32,
-            separation_enc=True,
-            enc_in_nodes=83,
-            enc_in_edges=8,
-            layers=1,
-            mp_in_edges=8,
-            mp_in_nodes=16,
-            mp_out_edges=64,
-            mp_out_nodes=128,
-            dropout=0,
-            batch_norm=False,
+    def forward(
+        self, aa, msa_feats, x, edge_index, edge_attr, secondary_structure, batch
     ):
+        # Embeddings (aa type, dssp classification, separation, distance)
+        aa = self.embeddings.amino_acid(aa.long())
+        ss = self.embeddings.secondary_structure(secondary_structure.long())
+        sep = self.embeddings.separation(edge_index)
+        rbf = self.embeddings.distance_rbf(edge_attr[:, 0])
+
+        # Encoder (dssp features on the nodes and geometric features on the edges)
+        x, edge_attr = self.encoder(x, msa_feats, edge_attr)
+
+        # Message passing
+        x = x_mp = torch.cat((aa, x, ss), dim=1)
+        edge_attr = torch.cat((edge_attr, sep, rbf), dim=1)
+        num_graphs = batch[-1].item() + 1
+        u = torch.empty(num_graphs, 0, dtype=torch.float, device=x.device)
+        for mp in self.message_passing:
+            x, edge_attr, edge_index, u, batch = mp(x, edge_attr, edge_index, u, batch)
+
+        # Readout
+        if self.readout_concat:
+            x = torch.cat((x, x_mp), dim=1)
+        x, u = self.readout(x, u)
+        return x, u
+
+
+class SeparationEmbedding(Module):
+    def __init__(self, embedding_dim, bins: tuple):
         super().__init__()
-        self.layers = []
+        self.bins = bins
+        self.emb = Embedding(num_embeddings=len(bins) + 1, embedding_dim=embedding_dim)
 
-        self.preprocessing = nn.Sequential(OrderedDict({
-            'rbf_distances': RbfDistanceEncodingEdges(min_dist, max_dist, rbf_size),
-            'separation_encoding': SeparationEncodingEdges() if separation_enc else nn.Identity(),
-            'residue_embedding': ResidueEmbedding(residue_emb_size),
-            'duplicate_edges': DuplicateEdges(),
-        }))
+    @torch.jit.ignore
+    def _sep_to_code(self, separation):
+        codes = np.digitize(separation.abs().cpu().numpy(), bins=self.bins, right=True)
+        codes = torch.from_numpy(codes).to(separation.device)
+        return codes
 
-        # Edge feature shape: E -> mp_in_edges//2 -> mp_in_edges
-        # Node feature shape: N -> mp_in_nodes//2 -> mp_in_nodes
-        self.encoder = nn.Sequential(OrderedDict({
-            'edge1': tg.EdgeLinear(out_features=mp_in_edges//2, edge_features=enc_in_edges),
-            'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'edge1_bn': tg.EdgeBatchNorm(num_features=mp_in_edges//2) if batch_norm else nn.Identity(),
-            'edge1_relu': tg.EdgeReLU(),
-            'edge2': tg.EdgeLinear(out_features=mp_in_edges, edge_features=mp_in_edges//2),
-            'edge2_dropout': tg.EdgeDropout(p=dropout),
-            'edge2_bn': tg.EdgeBatchNorm(num_features=mp_in_edges) if batch_norm else nn.Identity(),
-            'edge2_relu': tg.EdgeReLU(),
-
-            'node1': tg.NodeLinear(out_features=mp_in_nodes//2, node_features=enc_in_nodes),
-            'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'node1_bn': tg.NodeBatchNorm(num_features=mp_in_nodes//2) if batch_norm else nn.Identity(),
-            'node1_relu': tg.NodeReLU(),
-            'node2': tg.NodeLinear(out_features=mp_in_nodes, node_features=mp_in_nodes//2),
-            'node2_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-            'node2_bn': tg.NodeBatchNorm(num_features=mp_in_nodes) if batch_norm else nn.Identity(),
-            'node2_relu': tg.NodeReLU(),
-        }))
-
-        # Message passing layers: edge, node and global shapes go
-        # from (mp_in_edges , mp_in_nodes , mp_in_globals )
-        # to   (mp_out_edges, mp_out_nodes, mp_out_globals)
-        # following powers of 2 in the number of steps given with the `layers` parameter (e.g. 10).
-        mp_layers_output_sizes = np.power(2, np.linspace(
-            np.log2((mp_in_edges, mp_in_nodes)),
-            np.log2((mp_out_edges, mp_out_nodes)),
-            num=layers, endpoint=False
-        ).round().astype(int)).tolist()[1:] + [(mp_out_edges, mp_out_nodes)]
-
-        in_e, in_n = mp_in_edges, mp_in_nodes
-        for out_e, out_n in mp_layers_output_sizes:
-            layer = nn.Sequential(OrderedDict({
-                'edge1': tg.EdgeLinear(
-                    out_features=out_e,
-                    edge_features=in_e,
-                    sender_features=in_n,
-                ),
-                'edge1_dropout': tg.EdgeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-                'edge1_bn': tg.EdgeBatchNorm(num_features=out_e) if batch_norm else nn.Identity(),
-                'edge1_relu': tg.EdgeReLU(),
-
-                'node1': tg.NodeLinear(
-                    out_features=out_n,
-                    node_features=in_n,
-                    incoming_features=out_e,
-                    aggregation='mean',
-                ),
-                'node1_dropout': tg.NodeDropout(p=dropout) if dropout > 0 else nn.Identity(),
-                'node1_bn': tg.NodeBatchNorm(num_features=out_n) if batch_norm else nn.Identity(),
-                'node1_relu': tg.NodeReLU(),
-            }))
-            self.layers.append(layer)
-            in_e, in_n = out_e, out_n
-
-        self.layers = torch.nn.Sequential(OrderedDict({f'layer_{i}': l for i, l in enumerate(self.layers)}))
-
-        # Node feature shape: mp_out_nodes -> 1
-        # Global feature shape: mp_out_nodes -> 1
-        self.readout = nn.Sequential(OrderedDict({
-            'global': tg.GlobalLinear(features.Output.Global.LENGTH, node_features=mp_out_nodes, aggregation='mean'),
-            'global_sigmoid': tg.GlobalSigmoid(),
-
-            'node': tg.NodeLinear(features.Output.Node.LENGTH, node_features=mp_out_nodes),
-            'node_sigmoid': tg.NodeSigmoid(),
-        }))
-
-    def forward(self, decoys: DecoyBatch):
-        decoys = self.preprocessing(decoys)
-        decoys = self.encoder(decoys)
-        decoys = self.layers(decoys)
-        decoys = self.readout(decoys)
-
-        return decoys.evolve(
-            node_features=decoys.node_features,
-            num_edges_by_graph=None,
-            edge_index_by_graph=None,
-            edge_features=None,
-            global_features=decoys.global_features,
-            senders=None,
-            receivers=None
-        )
+    def forward(self, edge_index):
+        separation = edge_index[0] - edge_index[1]
+        codes = self._sep_to_code(separation)
+        embeddings = self.emb(codes)
+        return embeddings
 
 
-class ResidueEmbedding(nn.Embedding):
-    def __init__(self, residue_emb_size: int):
-        super().__init__(num_embeddings=22, embedding_dim=residue_emb_size)
-
-    def forward(self, decoys: DecoyBatch) -> DecoyBatch:
-        residue_embeddings = super(ResidueEmbedding, self).forward(decoys.residues)
-        return decoys.evolve(
-            residues=None,
-            node_features=torch.cat((
-                residue_embeddings,
-                decoys.node_features
-            ), dim=1)
-        )
-
-
-class ScalarDistanceEncodingEdges(nn.Module):
-    def forward(self, decoys: DecoyBatch):
-        # Distances are encoded as simple scalars
-        decoys = decoys.evolve(
-            distances=None,
-            edge_features=torch.cat((
-                decoys.distances[:, None],
-                decoys.edge_features
-            ), dim=1),
-        )
-
-        return decoys
-
-
-class RbfDistanceEncodingEdges(nn.Module):
-    def __init__(self, min_dist: float, max_dist: float, size: int):
+class RbfDistanceEncoding(Module):
+    def __init__(self, min_dist: float, max_dist: float, num_bases: int):
         super().__init__()
         if not 0 <= min_dist < max_dist:
-            raise ValueError(f'Invalid RBF centers: 0 <= {min_dist} < {max_dist} is False')
-        if size < 0:
-            raise ValueError(f'Invalid RBF size: 0 < {size} is False')
-        self.register_buffer('rbf_centers', torch.linspace(min_dist, max_dist, steps=size))
+            raise ValueError(
+                f"Invalid RBF centers: 0 <= {min_dist} < {max_dist} is False"
+            )
+        if num_bases < 0:
+            raise ValueError(f"Invalid RBF size: 0 < {num_bases} is False")
+        self.register_buffer(
+            "rbf_centers", torch.linspace(min_dist, max_dist, steps=num_bases)
+        )
 
-    def forward(self, decoys: DecoyBatch):
+    def forward(self, distances):
+        # assert distances.ndim == 1
         # Distances are encoded using a equally spaced RBF kernels with unit variance
-        distances_rbf = torch.exp(- (decoys.distances[:, None] - self.rbf_centers[None, :]) ** 2)
+        rbf = torch.exp(-((distances[:, None] - self.rbf_centers[None, :]) ** 2))
+        return rbf
 
-        decoys = decoys.evolve(
-            distances=None,
-            edge_features=torch.cat((
-                distances_rbf,
-                decoys.edge_features
-            ), dim=1),
-        )
-
-        return decoys
+    def extra_repr(self):
+        return f"bases={len(self.rbf_centers)}"
 
 
-class ScalarSeparationEncodingEdges(nn.Module):
-    def forward(self, decoys: DecoyBatch):
-        separation = decoys.receivers - decoys.senders - 1
-        decoys = decoys.evolve(
-            edge_features=torch.cat((
-                decoys.edge_features,
-                separation[:, None].float()
-            ), dim=1),
-        )
-        return decoys
-
-
-class CategoricalSeparationEncodingEdges(nn.Module):
-    # In numpy we would do:
-    # separation = [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11]
-    # bins = [0, 1, 2, 5, 10]
-    # np.searchsorted(bins, separation, side='right') - 1
-    # > [0, 1, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4]
-    #
-    # But torchsearchsorted does not have side=right. To get the same result:
-    # (len(bins) - 1) - np.searchsorted(-bins[::-1], -separation, side='left')
-    #
-    # Also torchsearchsorted requires 2D float inputs and returns float outputs
-    def __init__(self):
+class Encoder(Module):
+    def __init__(self, out_edge_feats, out_node_feats):
         super().__init__()
-        # self.register_buffer('bins', torch.tensor([0, 1, 2, 3, 4, 5, 10]))
-        self.register_buffer('bins', - torch.tensor([0, 1, 2, 3, 4, 5, 10]).flip(0).float().unsqueeze_(0))
-
-    def forward(self, decoys: DecoyBatch):
-        # separation = decoys.receivers - graphs.senders - 1
-        # separation_cls = searchsorted(separation, self.bins, side='right') - 1
-
-        separation = (decoys.senders - decoys.receivers + 1).float().unsqueeze_(0)
-        separation_cls = (self.bins.numel() - 1) - searchsorted(self.bins, separation).squeeze_(0).long()
-
-        separation_onehot = torch.zeros(decoys.num_edges, self.bins.numel(), device=decoys.senders.device)
-        separation_onehot.scatter_(value=1., index=separation_cls.unsqueeze_(1), dim=1)
-
-        decoys = decoys.evolve(
-            edge_features=torch.cat((
-                decoys.edge_features,
-                separation_onehot
-            ), dim=1),
+        self.node_encoder = Sequential(
+            Linear(3 + 21, out_node_feats // 2),
+            ReLU(),
+            Linear(out_node_feats // 2, out_node_feats),
+            ReLU(),
+        )
+        self.edge_encoder = Sequential(
+            Linear(4, out_edge_feats // 2),
+            ReLU(),
+            Linear(out_edge_feats // 2, out_edge_feats),
+            ReLU(),
         )
 
-        return decoys
+    def forward(self, x, msa_feats, edge_attr):
+        x = self.node_encoder(torch.cat((x, msa_feats), dim=1))
+        edge_attr = self.edge_encoder(edge_attr)
+        return x, edge_attr
 
 
-class DuplicateEdges(nn.Module):
-    def __call__(self, decoys: DecoyBatch):
-        decoys = decoys.evolve(
-            senders=torch.cat((decoys.senders, decoys.receivers), dim=0),
-            receivers=torch.cat((decoys.receivers, decoys.senders), dim=0),
-            edge_features=decoys.edge_features.repeat(2, 1),
-            num_edges_by_graph=decoys.num_edges_by_graph * 2,
-            edge_index_by_graph=decoys.edge_index_by_graph.repeat(2)
+class MessagePassing(Module):
+    def __init__(
+        self,
+        in_edge_feats: int,
+        in_node_feats: int,
+        in_global_feats: int,
+        out_edge_feats: int,
+        out_node_feats: int,
+        out_global_feats: int,
+        batch_norm: bool,
+        dropout: float,
+    ):
+        super().__init__()
+        in_feats = in_node_feats + in_edge_feats + in_global_feats
+        self.edge_fn = Sequential(
+            Linear(in_feats, out_edge_feats),
+            Dropout(p=dropout) if dropout > 0 else Identity(),
+            BatchNorm1d(out_edge_feats) if batch_norm else Identity(),
+            ReLU(),
         )
-        return decoys
+        in_feats = in_node_feats + out_edge_feats + in_global_feats
+        self.node_fn = Sequential(
+            Linear(in_feats, out_node_feats),
+            Dropout(p=dropout) if dropout > 0 else Identity(),
+            BatchNorm1d(out_node_feats) if batch_norm else Identity(),
+            ReLU(),
+        )
+        in_feats = out_node_feats + out_edge_feats + in_global_feats
+        self.global_fn = Sequential(
+            Linear(in_feats, out_global_feats),
+            Dropout(p=dropout) if dropout > 0 else Identity(),
+            BatchNorm1d(out_global_feats) if batch_norm else Identity(),
+            ReLU(),
+        )
+
+    def forward(self, x, edge_attr, edge_index, u, batch):
+        x_src = x[edge_index[0]]
+        u_src = u[batch[edge_index[0]]]
+        edge_attr = torch.cat((x_src, edge_attr, u_src), dim=1)
+        edge_attr = self.edge_fn(edge_attr)
+
+        msg_to_node = torch_scatter.scatter(
+            edge_attr, edge_index[1], dim=0, dim_size=x.shape[0], reduce="mean"
+        )
+        u_to_node = u[batch]
+        x = torch.cat((x, msg_to_node, u_to_node), dim=1)
+        x = self.node_fn(x)
+
+        edge_global = torch_scatter.scatter(
+            edge_attr, batch[edge_index[0]], dim=0, dim_size=u.shape[0], reduce="mean"
+        )
+        x_global = torch_scatter.scatter(
+            x, batch, dim=0, dim_size=u.shape[0], reduce="mean"
+        )
+        u = torch.cat((edge_global, x_global, u), dim=1)
+        u = self.global_fn(u)
+
+        return x, edge_attr, edge_index, u, batch
+
+
+class Readout(Module):
+    def __init__(self, in_node_feats, in_global_feats):
+        super().__init__()
+        self.node_fn = Sequential(Linear(in_node_feats, 2), Sigmoid())
+        self.global_fn = Sequential(Linear(in_global_feats, 5), Sigmoid())
+
+    def forward(self, x, u):
+        x = self.node_fn(x)
+        u = self.global_fn(u)
+        return x, u
+
+
+def round_to_pow2(value):
+    return np.exp2(np.round(np.log2(value))).astype(int)
+
+
+def layer_sizes_linear(in_feats, out_feats, layers, round_pow2=False):
+    sizes = np.linspace(in_feats, out_feats, layers + 1).round().astype(np.int)
+    if round_pow2:
+        sizes[1:-1] = round_to_pow2(sizes[1:-1])
+    return sizes.tolist()
+
+
+def layer_sizes_exp2(in_feats, out_feats, layers, round_pow2=False):
+    sizes = (
+        np.logspace(np.log2(in_feats), np.log2(out_feats), layers + 1, base=2)
+        .round()
+        .astype(np.int)
+    )
+    if round_pow2:
+        sizes[1:-1] = round_to_pow2(sizes[1:-1])
+    return sizes.tolist()

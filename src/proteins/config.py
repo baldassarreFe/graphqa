@@ -1,9 +1,32 @@
-from typing import Mapping, Tuple, Any, Optional, MutableMapping, Sequence, Generator, Iterable
+import random
+from argparse import Namespace
+from typing import Sequence, Mapping, Tuple, Any, Iterator, Dict
 
-import yaml
+import namesgenerator
+from omegaconf import OmegaConf
 
 
-def flatten_dict(input: Mapping, prefix: Sequence = ()) -> Generator[Tuple[Tuple, Any], None, None]:
+def random_name():
+    return f"{namesgenerator.get_random_name()}_{random.randint(1000, 9999)}"
+
+
+def parse_config(arg_list: Sequence[str]):
+    OmegaConf.register_resolver("random_seed", lambda: random.randint(0, 10_000))
+    OmegaConf.register_resolver("random_name", random_name)
+
+    conf = OmegaConf.create()
+    for s in arg_list:
+        if s.endswith(".yaml"):
+            conf.merge_with(OmegaConf.load(s))
+        else:
+            conf.merge_with_dotlist([s])
+
+    # Make sure everything is resolved
+    conf = OmegaConf.create(OmegaConf.to_container(conf, resolve=True))
+    return conf
+
+
+def flatten_dict(input: Mapping, prefix: Sequence = ()) -> Iterator[Tuple[Tuple, Any]]:
     """Flatten a dictionary into a sequence of (tuple_key, value) tuples
 
     Example:
@@ -21,104 +44,17 @@ def flatten_dict(input: Mapping, prefix: Sequence = ()) -> Generator[Tuple[Tuple
             yield (*prefix, k), v
 
 
-def build_dict(tuples: Iterable[Tuple[Tuple[str, ...], Any]],
-               target: Optional[MutableMapping] = None) -> MutableMapping:
-    if target is None:
-        target = {}
-    for k, v in tuples:
-        t = target
-        while len(k) > 1:
-            kk, *k = k
-            t = t.setdefault(kk, {})
-        t[k[0]] = v
-    return target
+def omegaconf_to_namespace(config: OmegaConf) -> Namespace:
+    return Namespace(
+        **{
+            ".".join(k): v
+            for k, v in flatten_dict(OmegaConf.to_container(config, resolve=True))
+        }
+    )
 
 
-def update_rec(target: MutableMapping, source: Mapping):
-    for k in source.keys():
-        if k in target and isinstance(target[k], Mapping) and isinstance(source[k], Mapping):
-            update_rec(target[k], source[k])
-        else:
-            target[k] = source[k]
-
-
-def parse_args(args: Optional[Iterable[str]] = None, config: Optional[MutableMapping[str, Any]] = None):
-    """Parse a list of configuration strings into a dictionary.
-
-    Args:
-        args: List of configuration strings, defaults to ``sys.argv``.
-        config: A dictionary to update with the parsed configuration.
-
-    Returns:
-        The parsed configuration.
-
-    Example:
-        This is an example::
-
-            python main.py \
-                config/train.yaml \
-                name=test \
-                session.epochs=1 \
-                session.losses.nodes.weight=4 \
-                --session \
-                  epochs=3 \
-                  batch_size=100 \
-                --optimizer \
-                  fn=my.module.function \
-                --optimizer.kwargs \
-                  lr=199 \
-                  weight_decay=17 \
-                  other=3 \
-                -- \
-                  comment=hey \
-                --model \
-                  config/model.yaml \
-                --something.different \
-                  a=1 \
-                  b=2 \
-                  c=3
-    """
-    if args is None:
-        import sys
-        args = sys.argv[1:]
-    if config is None:
-        config = {}
-    sub_config = config
-
-    for arg in args:
-        if arg[:2] == '--':
-            sub_config = config
-            if len(arg) > 2:
-                prefix = arg[2:].split('.')
-                while len(prefix) > 0:
-                    sub_config = sub_config.setdefault(prefix[0], {})
-                    prefix = prefix[1:]
-        elif '=' in arg:
-            sub_sub_config = sub_config
-            name_dotted, value = arg.split('=')
-            name_head, *name_rest = name_dotted.split('.')
-            while len(name_rest) > 0:
-                sub_sub_config = sub_sub_config.setdefault(name_head, {})
-                name_head, *name_rest = name_rest
-            sub_sub_config[name_head] = yaml.safe_load(value)
-        elif arg.rsplit('.', maxsplit=1)[-1] in {'yaml', 'yml'}:
-            with open(arg, 'r') as f:
-                sub_config_new = yaml.safe_load(f)
-                update_rec(sub_config, sub_config_new)
-
+def namespace_to_omegaconf(args: Namespace) -> OmegaConf:
+    config = OmegaConf.create()
+    for k, v in args:
+        config.merge_with_dotlist(f"{k}={v}")
     return config
-
-
-def main():
-    import pyaml
-
-    config = parse_args()
-
-    pyaml.pprint(config, sort_dicts=False)
-    print('-' * 80)
-    for k, v in flatten_dict(config):
-        print(f'{".".join(k)}:\t{v}')
-
-
-if __name__ == '__main__':
-    main()

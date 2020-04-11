@@ -1,26 +1,68 @@
-name: proteins
-comment: default configuration
-tags:
-  - default
+fullname: ${random_name:}
+comment: default config
+tags: []
 
-data:
-  cutoff: 8
-  partial_entropy: yes
-  self_information: yes
-  dssp: yes
+losses:
+  weight_local: 1.0
+  weight_global: 1.0
 
 optimizer:
-  fn: torch.optim.Adam
-  lr: .001
+  name: "Adam"
+  lr: 0.005
   weight_decay: 1.0e-05
 
-loss:
-  local_lddt:
-    name: mse
-    weight: 5
-  global_gdtts:
-    name: mse
-    weight: 1
-  ranking:
-    name: rank
-    weight: 0
+scheduler:
+  name: "StepLR"
+  step_size: 250
+  gamma: .5
+
+dataloader:
+  batch_size: 16
+  num_workers: 4
+
+checkpoint:
+  keep: 2
+  period: 1
+  monitor: "val/global_per_target/gdtts/R"
+  mode: "max"
+  folder: "runs"
+
+datasets:
+  folder: "data"
+  trainval:
+    casp_editions: [9,10,11,12]
+    split: .85
+    seed: ${random_seed:}
+  test:
+    casp_editions: [13]
+
+model:
+  embeddings:
+    aa: 64
+    ss: 64
+    sep: 64
+    rbf: 16
+  encoder:
+    out_node_feats: 128
+    out_edge_feats: 64
+  mp:
+    layers: 6
+    dropout: 0.2
+    batch_norm: False
+    in_global_feats: 512
+    out_edge_feats: 16
+    out_node_feats: 64
+    out_global_feats: 32
+  readout:
+    concat: yes
+
+session:
+  seed: ${random_seed:}
+  device: "cuda"
+  max_epochs: 1000
+  val_every: 50
+  accumulate_grad: 1
+  early_stopping:
+    patience: 5
+    monitor: "${checkpoint.monitor}"
+    mode: "${checkpoint.mode}"
