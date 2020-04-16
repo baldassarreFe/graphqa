@@ -1,6 +1,6 @@
 import random
 from argparse import Namespace
-from typing import Sequence, Mapping, Tuple, Any, Iterator, Dict
+from typing import Sequence, Mapping, Tuple, Any, Iterator
 
 import namesgenerator
 from omegaconf import OmegaConf
@@ -56,12 +56,13 @@ def omegaconf_to_namespace(config: OmegaConf) -> Namespace:
 def namespace_to_omegaconf(args: Namespace) -> OmegaConf:
     config = OmegaConf.create()
     for k, v in args:
-        config.merge_with_dotlist(f"{k}={v}")
+        config.merge_with_dotlist([f"{k}={v}"])
     return config
 
 
 def main():
     import sys
+
     conf = parse_config(sys.argv[1:])
     print(conf.pretty())
 

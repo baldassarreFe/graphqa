@@ -34,14 +34,18 @@ class DecoyDataset(Dataset):
 
             for decoy in target["graphs"]:
                 decoy_id = decoy.decoy_id
-                if torch.isnan(decoy.qa_local).all(dim=0, keepdim=True).any(dim=1):
+                if hasattr(decoy, "qa_local") and torch.isnan(decoy.qa_local).all(
+                    dim=0, keepdim=True
+                ).any(dim=1):
                     logger.warning(
                         f"Decoy {target_id}/{decoy_id} contains all NaN values "
                         f"in one of the columns of ground-truth local scores"
                     )
                     skipped += 1
                     continue
-                if torch.isnan(decoy.qa_global).all(dim=1):
+                if hasattr(decoy, "qa_global") and torch.isnan(decoy.qa_global).all(
+                    dim=1
+                ):
                     logger.warning(
                         f"Decoy {target_id}/{decoy_id} contains all NaN values "
                         f"for its ground-truth global scores"
@@ -103,9 +107,9 @@ class DecoyDataset(Dataset):
 
 
 def find_pth_files(
-        data_dir: Union[str, Path],
-        casp_ed: Optional[str] = None,
-        target_id: Optional[str] = None,
+    data_dir: Union[str, Path],
+    casp_ed: Optional[str] = None,
+    target_id: Optional[str] = None,
 ) -> Iterator[Path]:
     if casp_ed is None:
         casp_ed = "*"
@@ -114,9 +118,9 @@ def find_pth_files(
 
     return (
         Path(data_dir)
-            .expanduser()
-            .resolve()
-            .glob(f"CASP{casp_ed}/processed/{target_id}.pth")
+        .expanduser()
+        .resolve()
+        .glob(f"CASP{casp_ed}/processed/{target_id}.pth")
     )
 
 

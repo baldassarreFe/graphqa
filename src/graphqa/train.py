@@ -5,10 +5,9 @@ from pathlib import Path
 from typing import Dict, Sequence
 
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import torch
+import wandb
 from loguru import logger
 from omegaconf import OmegaConf
 from sklearn.model_selection import train_test_split
@@ -17,17 +16,12 @@ from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Batch
 from torch_geometric.data import DataLoader
 
-from proteins.callbacks import MyTensorBoardLogger, MyEarlyStopping
-from proteins.config import parse_config
-from proteins.dataset import DecoyDataset, RandomTargetSampler
-from proteins.logging import setup_logging, add_logfile
-from proteins.metrics import (
-    scores_from_outputs,
-    metrics_from_scores,
-    figures_from_scores,
-    log_dict_from_metrics,
-)
-from proteins.networks import GraphQA
+from .callbacks import MyEarlyStopping, WandbCallbacks, wandb_init, MyModelCheckpoint
+from .dataset import DecoyDataset, RandomTargetSampler
+from .logging import setup_logging, add_logfile
+from .metrics import scores_from_outputs, metrics_from_scores, figures_from_scores
+from .networks import GraphQA
+from .utils.config import parse_config
 
 
 @torch.jit.script
@@ -154,15 +148,17 @@ class LightningGraphQA(pl.LightningModule):
 
         return {
             "loss": loss,
-            "log": {
-                "train/loss": loss.item(),
-                "train/local/lddt": mse_local[0].item(),
-                "train/local/cad": mse_local[1].item(),
-                "train/global/tmscore": mse_global[0].item(),
-                "train/global/gdtts": mse_global[1].item(),
-                "train/global/gdtha": mse_global[2].item(),
-                "train/global/lddt": mse_global[3].item(),
-                "train/global/cad": mse_global[4].item(),
+            "hiddens": {
+                "train_metrics": {
+                    "train/loss": loss.item(),
+                    "train/local/lddt": mse_local[0].item(),
+                    "train/local/cad": mse_local[1].item(),
+                    "train/global/tmscore": mse_global[0].item(),
+                    "train/global/gdtts": mse_global[1].item(),
+                    "train/global/gdtha": mse_global[2].item(),
+                    "train/global/lddt": mse_global[3].item(),
+                    "train/global/cad": mse_global[4].item(),
+                }
             },
         }
 
@@ -200,7 +196,6 @@ class LightningGraphQA(pl.LightningModule):
         val_metrics = metrics_from_scores(val_scores)
         val_figures = figures_from_scores(val_scores)
         return {
-            "log": log_dict_from_metrics(val_metrics, prefix="val"),
             "val_scores": val_scores,
             "val_metrics": val_metrics,
             "val_figures": val_figures,
@@ -214,7 +209,6 @@ class LightningGraphQA(pl.LightningModule):
         test_metrics = metrics_from_scores(test_scores)
         test_figures = figures_from_scores(test_scores)
         return {
-            "log": log_dict_from_metrics(test_metrics, prefix="test"),
             "test_scores": test_scores,
             "test_metrics": test_metrics,
             "test_figures": test_figures,
@@ -232,105 +226,6 @@ def setup_seeds(seed):
     torch.manual_seed(seed)
 
 
-class LogsCallback(pl.callbacks.Callback):
-    def __init__(self, run_dir: Path):
-        self.run_dir = run_dir.expanduser().resolve()
-
-    def on_train_start(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        logger.info(
-            f"Train start: epoch {trainer.current_epoch}, step {trainer.global_step}"
-        )
-        with self.run_dir.joinpath(f"conf_{trainer.global_step}.yaml").open("a") as f:
-            f.write(pl_module.conf.pretty())
-
-    # def on_epoch_start(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-    #     logger.info("Epoch start")
-
-    def on_epoch_end(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        # logger.info("Epoch end")
-        trainer.logger.log_metrics(
-            {
-                f"lr_{i}_{j}": pg["lr"]
-                for i, optimizer in enumerate(trainer.optimizers)
-                for j, pg in enumerate(optimizer.param_groups)
-            },
-            step=trainer.global_step,
-        )
-
-    def on_validation_start(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        logger.info(
-            f"Val start: epoch {trainer.current_epoch}, step {trainer.global_step}"
-        )
-
-    def on_validation_end(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        logger.info(
-            f"Val end: epoch {trainer.current_epoch}, step {trainer.global_step}"
-        )
-
-        val_figures = trainer.callback_metrics["val_figures"]
-        for key, fig in val_figures.items():
-            trainer.logger.experiment.add_figure(
-                f"val/{key}", fig, trainer.global_step, close=True
-            )
-
-        val_metrics = log_dict_from_metrics(
-            trainer.callback_metrics["val_metrics"], prefix="val"
-        )
-        with self.run_dir.joinpath("metrics.csv").open("a") as f:
-            f.write(f"epoch, {trainer.current_epoch}\n")
-            f.write(f"step, {trainer.global_step}\n")
-            for k, v in val_metrics.items():
-                f.write(f"{k}, {v}\n")
-
-    def on_train_end(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        logger.info(
-            f"Train end: epoch {trainer.current_epoch}, step {trainer.global_step}"
-        )
-        # Not sure why the last validation doesn't get logged
-        val_metrics = log_dict_from_metrics(
-            trainer.callback_metrics["val_metrics"], prefix="val"
-        )
-        trainer.logger.log_metrics(val_metrics, step=trainer.global_step)
-
-    def on_test_start(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        logger.info("Test start")
-
-    def on_test_end(self, trainer: pl.Trainer, pl_module: LightningGraphQA):
-        logger.info("Test end")
-
-        test_figures = trainer.callback_metrics["test_figures"]
-        for key, fig in test_figures.items():
-            trainer.logger.experiment.add_figure(
-                f"test/{key}", fig, trainer.global_step, close=False
-            )
-            fig.savefig(
-                self.run_dir.joinpath(key.replace("/", "_")).with_suffix(".png"),
-                bbox_inches="tight",
-                pad_inches=0.01,
-                dpi=300,
-            )
-            plt.close(fig)
-
-        test_metrics = log_dict_from_metrics(
-            trainer.callback_metrics["test_metrics"], prefix="test"
-        )
-        trainer.logger.log_metrics(test_metrics, step=trainer.global_step)
-        with self.run_dir.joinpath("metrics.csv").open("a") as f:
-            f.write(f"epoch, {trainer.current_epoch}\n")
-            f.write(f"step, {trainer.global_step}\n")
-            for k, v in test_metrics.items():
-                f.write(f"{k}, {v}\n")
-
-        pd.to_pickle(
-            trainer.callback_metrics["test_scores"],
-            self.run_dir.joinpath("test_scores.pkl"),
-        )
-        pd.to_pickle(
-            trainer.callback_metrics["test_metrics"],
-            self.run_dir.joinpath("test_metrics.pkl"),
-        )
-
-
 @logger.catch
 def main():
     parser = ArgumentParser()
@@ -340,16 +235,15 @@ def main():
     args = parser.parse_args()
     conf = parse_config(args.rest)
 
-    add_logfile(Path(conf.checkpoint.folder) / conf.fullname / "logs.txt")
+    wandb_init(conf)
+    add_logfile(Path(wandb.run.dir) / "stdout.log")
     setup_seeds(conf.session.seed)
     logger.info(f"Configuration:\n{conf.pretty()}")
 
     model = LightningGraphQA(conf)
-    checkpointer = pl.callbacks.ModelCheckpoint(
-        filepath=Path(conf.checkpoint.folder)
-        / conf.fullname
-        / "checkpoints"
-        / "{epoch}",
+    wandb_callbacks = WandbCallbacks(conf)
+    checkpointer = MyModelCheckpoint(
+        filepath=Path(wandb.run.dir) / "checkpoints" / "{epoch}",
         save_top_k=conf.checkpoint.keep,
         verbose=True,
         monitor=conf.checkpoint.monitor,
@@ -357,9 +251,9 @@ def main():
         prefix="graphqa_",
         period=conf.checkpoint.period,
     )
-    tb_logger = MyTensorBoardLogger(
-        save_dir=Path(conf.checkpoint.folder), name=None, version=conf.fullname
-    )
+    # tb_logger = MyTensorBoardLogger(
+    #     save_dir=Path(conf.checkpoint.folder), name=None, version=conf.fullname
+    # )
     early_stop_callback = MyEarlyStopping(
         monitor=conf.session.early_stopping.monitor,
         min_delta=0.00,
@@ -372,16 +266,16 @@ def main():
         max_epochs=conf.session.max_epochs,
         accumulate_grad_batches=conf.session.accumulate_grad,
         fast_dev_run=args.fast_dev_run,
-        log_gpu_memory=True,
         weights_summary=None,
         check_val_every_n_epoch=conf.session.val_every,
-        logger=tb_logger,
+        logger=False,
         checkpoint_callback=checkpointer,
         early_stop_callback=early_stop_callback,
-        callbacks=[LogsCallback(Path(conf.checkpoint.folder) / conf.fullname)],
+        callbacks=[wandb_callbacks],
     )
-    trainer.fit(model)
-    trainer.test(model)
+    result = trainer.fit(model)
+    if result == 1:
+        trainer.test(model)
 
 
 if __name__ == "__main__":

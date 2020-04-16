@@ -1,5 +1,6 @@
+project: graphqa
 fullname: ${random_name:}
-comment: default config
+notes: default config
 tags: []
 
 losses:
