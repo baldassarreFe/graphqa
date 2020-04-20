@@ -34,6 +34,11 @@ def first_rank_loss(preds, true):
     return true.max() - true.iloc[preds.argmax()]
 
 
+def zscore(preds, true):
+    zscores = pd.Series(scipy.stats.zscore(true), index=true.index)
+    return zscores.iloc[preds.argmax()]
+
+
 def per_score_metrics(df_score: pd.DataFrame):
     df = df_score.droplevel(axis=1, level="score")
     df = df.dropna(axis="index", subset=["true"])
@@ -41,7 +46,7 @@ def per_score_metrics(df_score: pd.DataFrame):
         logger.warning(
             f'Empty score dataframe after removing NaN values from "true"\n{df_score}'
         )
-        return pd.Series({"RMSE": 0, "R2": 1, "R": 1, "ρ": 1, "τ": 1, "FRL": 0})
+        return pd.Series({"RMSE": 0, "R2": 1, "R": 1, "ρ": 1, "τ": 1, "z": 0, "FRL": 0})
     pred = df["pred"]
     true = df["true"]
     return pd.Series(
@@ -51,6 +56,7 @@ def per_score_metrics(df_score: pd.DataFrame):
             "R": pearson(pred, true),
             "ρ": spearmanr(pred, true),
             "τ": kendalltau(pred, true),
+            "z": zscore(pred, true),
             "FRL": first_rank_loss(pred, true),
         }
     )
@@ -135,7 +141,6 @@ def scores_from_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, pd.DataFrame
 
 
 def metrics_from_scores(scores: Mapping[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
-
     # Global metrics
     scores_global = scores["global"]
     metrics_global = compute_global_metrics(scores_global)
