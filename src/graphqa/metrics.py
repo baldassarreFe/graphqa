@@ -39,6 +39,13 @@ def zscore(preds, true):
     return zscores.iloc[preds.argmax()]
 
 
+def ktop_rank_loss(preds, true, k=5):
+    topk_true_according_to_pred = pd.DataFrame({"pred": preds, "true": true}).nlargest(
+        k, columns="pred"
+    )["true"]
+    return min(true.max() - topk_true_according_to_pred)
+
+
 def per_score_metrics(df_score: pd.DataFrame):
     df = df_score.droplevel(axis=1, level="score")
     df = df.dropna(axis="index", subset=["true"])
@@ -46,7 +53,9 @@ def per_score_metrics(df_score: pd.DataFrame):
         logger.warning(
             f'Empty score dataframe after removing NaN values from "true"\n{df_score}'
         )
-        return pd.Series({"RMSE": 0, "R2": 1, "R": 1, "ρ": 1, "τ": 1, "z": 0, "FRL": 0})
+        return pd.Series(
+            {"RMSE": 0, "R2": 1, "R": 1, "ρ": 1, "τ": 1, "z": 0, "FRL": 0, "top5": 0}
+        )
     pred = df["pred"]
     true = df["true"]
     return pd.Series(
@@ -58,6 +67,7 @@ def per_score_metrics(df_score: pd.DataFrame):
             "τ": kendalltau(pred, true),
             "z": zscore(pred, true),
             "FRL": first_rank_loss(pred, true),
+            "top5": ktop_rank_loss(pred, true, k=5),
         }
     )
 
