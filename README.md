@@ -3,13 +3,13 @@
 ## Initial setup
 Clone repository, install package and prepare directory structure:
 ```bash
-git clone https://github.com/baldassarreFe/protein-quality-gn
-cd protein-quality-gn
+git clone https://github.com/baldassarreFe/graphqa
+cd graphqa
 
 export PATH="/usr/local/cuda/bin:${PATH}"
 export CPATH="/usr/local/cuda/include:${CPATH}"
-conda env create -n proteins -f conda.yaml
-conda activate proteins
+conda env create -n graphqa -f conda.yaml
+conda activate graphqa
 pip install .
 ```
 

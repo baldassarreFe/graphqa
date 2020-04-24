@@ -1,4 +1,4 @@
-name: proteins_new
+name: graphqa
 channels:
   - pytorch
   - bioconda
