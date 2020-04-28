@@ -2,4 +2,3 @@
 *
 # Except
 !.gitignore
-!download-datasets.sh

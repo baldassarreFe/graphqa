@@ -1,0 +1,15 @@
+project: graphqa
+fullname: ${random_name:}_raw
+notes: GraphQA RAW (no MSA and DSSP features)
+tags:
+  - raw
+
+model:
+  embeddings:
+    aa: 64
+    ss: 0
+    sep: 64
+    rbf: 16
+  encoder:
+    out_node_feats: 0
+    out_edge_feats: 64
