@@ -1,0 +1,112 @@
+name: proteins
+tags:
+- ablation
+- sep_scalar
+- dist_rbf
+fullname: ablation_sep_scalar_dist_rbf_loving_williams
+completed_epochs: 35
+samples: 4044460
+data:
+  cutoff: 8
+  partial_entropy: true
+  self_information: true
+  dssp: true
+model:
+  fn: proteins.networks.ProteinGN
+  layers: 6
+  dropout: 0.2
+  batch_norm: false
+  min_dist: 0
+  max_dist: 20
+  rbf_size: 32
+  separation_enc: scalar
+  residue_emb_size: 64
+  mp_in_edges: 128
+  mp_in_nodes: 512
+  mp_in_globals: 512
+  mp_out_edges: 16
+  mp_out_nodes: 64
+  mp_out_globals: 32
+  distance_enc: rbf
+  enc_in_nodes: 125
+  enc_in_edges: 33
+optimizer:
+  fn: torch.optim.Adam
+  lr: 0.001
+  weight_decay: 1.0e-05
+loss:
+  local_lddt:
+    name: mse
+    weight: 1
+  global_gdtts:
+    name: mse
+    weight: 1
+  ranking:
+    name: rank
+    weight: 0
+history:
+- completed_epochs: 35
+  samples: 4044460
+  max_epochs: 35
+  batch_size: 400
+  seed: 254
+  cpus: 1
+  device: cuda
+  status: COMPLETED
+  datetime_started: 2019-11-08 13:05:19.517073
+  datetime_completed: 2019-11-08 15:20:02.265986
+  data:
+    in_memory: true
+    sampler: random
+    trainval:
+    - /local_storage/datasets/protein_quality_assessment/CASP7
+    - /local_storage/datasets/protein_quality_assessment/CASP8
+    - /local_storage/datasets/protein_quality_assessment/CASP9
+    - /local_storage/datasets/protein_quality_assessment/CASP10
+    train:
+    - /local_storage/datasets/protein_quality_assessment/CASP7
+    - /local_storage/datasets/protein_quality_assessment/CASP8
+    - /local_storage/datasets/protein_quality_assessment/CASP9
+    - /local_storage/datasets/protein_quality_assessment/CASP10
+    val:
+    - /local_storage/datasets/protein_quality_assessment/CASP11
+  logs:
+    folder: /Midgard/home/fbaldassarre/experiments/proteins/runs_separation_distance_enc
+  checkpoint: 5
+  metric:
+    local_lddt:
+      rmse: 0.119738669555367
+      pearson: 0.8657983052334552
+      per_model_pearson: 0.6015019533136479
+    global_gdtts:
+      rmse: 0.11079053580760956
+      pearson: 0.910010534289684
+      spearman: 0.9181759457972976
+      kendall: 0.7461900890261588
+      ranking: 0.00867140009289696
+      per_target_pearson: 0.7139156246602936
+      per_target_spearman: 0.6056376739816981
+      per_target_kendall: 0.4484401412315597
+      first_rank_loss: 0.0626535735846985
+  misc:
+    parameters: 1461795
+    samples:
+      train: 115556
+      val: 15898
+    targets:
+      train: 437
+      val: 84
+  git:
+    url: git@github.com:baldassarreFe/protein-quality-gn.git
+    commit: 26a17e5fe02f2594f1fec72bda932cd0dd15559d
+    dirty: false
+  cuda:
+    driver: '430.50'
+    devices:
+      cuda:0:
+        model: TITAN Xp
+        utilization: 0 %
+        memory_used: 10 MiB
+        memory_total: 12196 MiB
+        memory_used_max: 2827 MiB
+        memory_cached_max: 12096 MiB

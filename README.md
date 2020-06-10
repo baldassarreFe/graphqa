@@ -1,15 +1,19 @@
-# Protein quality
+# GraphQA: Protein Model Quality Assessment using Graph Convolutional Networks
+
+## Evaluation server
+Try it yourself!
+A simple implementation of an evaluation server is available at this [link](http://isengard.csc.kth.se:8585/).
 
 ## Initial setup
 Clone repository, install package and prepare directory structure:
 ```bash
-git clone https://github.com/baldassarreFe/protein-quality-gn
-cd protein-quality-gn
+git clone https://github.com/baldassarreFe/graphqa
+cd graphqa
 
 export PATH="/usr/local/cuda/bin:${PATH}"
 export CPATH="/usr/local/cuda/include:${CPATH}"
-conda env create -n proteins -f conda.yaml
-conda activate proteins
+conda env create -n graphqa -f conda.yaml
+conda activate graphqa
 pip install .
 ```
 
