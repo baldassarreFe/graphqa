@@ -16,21 +16,13 @@ from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Batch
 from torch_geometric.data import DataLoader
 
+from .losses import nan_mse
 from .callbacks import MyEarlyStopping, WandbCallbacks, wandb_init, MyModelCheckpoint
 from .dataset import DecoyDataset, RandomTargetSampler
 from .logging import setup_logging, add_logfile
 from .metrics import scores_from_outputs, metrics_from_scores, figures_from_scores
 from .networks import GraphQA
 from .utils.config import parse_config
-
-
-@torch.jit.script
-def nan_mse(inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    mask = torch.isfinite(targets)
-    zero = targets.new_zeros(())
-    num = torch.where(mask, targets - inputs, zero).pow(2).sum(dim=0)
-    den = mask.sum(dim=0)
-    return num / den
 
 
 class LightningGraphQA(pl.LightningModule):
@@ -214,6 +206,33 @@ class LightningGraphQA(pl.LightningModule):
             "test_figures": test_figures,
         }
 
+    def eval_step(self, graphs: Batch, batch_idx: int):
+        x, u = self(graphs)
+
+        scores_global = {
+            "target_id": graphs.target_id,
+            "decoy_id": graphs.decoy_id,
+            ("tm", "pred"): u[:, 0].cpu().numpy(),
+            ("gdtts", "pred"): u[:, 1].cpu().numpy(),
+            ("gdtha", "pred"): u[:, 2].cpu().numpy(),
+            ("lddt", "pred"): u[:, 3].cpu().numpy(),
+            ("cad", "pred"): u[:, 4].cpu().numpy(),
+        }
+
+        scores_local = {
+            "target_id": np.array(graphs.target_id).repeat(graphs.n_nodes.cpu()),
+            "decoy_id": np.array(graphs.decoy_id).repeat(graphs.n_nodes.cpu()),
+            "residue_idx": np.concatenate([np.arange(n) for n in graphs.n_nodes.cpu()]),
+            ("lddt", "pred"): x[:, 0].cpu().numpy(),
+            ("cad", "pred"): x[:, 1].cpu().numpy(),
+        }
+
+        return {"scores_global": scores_global, "scores_local": scores_local}
+
+    def eval_epoch_end(self, outputs):
+        eval_scores = scores_from_outputs(outputs)
+        return eval_scores
+
     def forward(self, graphs: Batch):
         inputs = GraphQA.prepare(graphs)
         outputs = self.model(*inputs)
@@ -251,9 +270,6 @@ def main():
         prefix="graphqa_",
         period=conf.checkpoint.period,
     )
-    # tb_logger = MyTensorBoardLogger(
-    #     save_dir=Path(conf.checkpoint.folder), name=None, version=conf.fullname
-    # )
     early_stop_callback = MyEarlyStopping(
         monitor=conf.session.early_stopping.monitor,
         min_delta=0.00,

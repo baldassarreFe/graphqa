@@ -1,7 +1,7 @@
 import functools
 from collections import defaultdict
 from pathlib import Path
-from typing import Tuple, Dict, Iterator, Optional, Union
+from typing import Tuple, Dict, Iterator, Optional, Union, Sized, Sequence
 
 import numpy as np
 import torch
@@ -12,13 +12,13 @@ from loguru import logger
 
 
 class DecoyDataset(Dataset):
-    def __init__(self, pth_paths, transforms=None):
+    def __init__(self, pth_paths: Sequence[Path], transforms=None):
         super().__init__()
 
         self.targets_by_target_id: Dict[str, Data] = {}
         self.targets_by_casp_ed_and_target_id: Dict[Tuple[int, str], Data] = {}
         self.decoys_by_target_id_and_decoy_id: Dict[Tuple[str, str], Data] = {}
-        self.decoys_by_casp_ed_and_target_id_and_decoy_id: Dict[
+        self.decoys_by_ds_ed_and_target_id_and_decoy_id: Dict[
             Tuple[int, str, str], Data
         ] = {}
 
@@ -26,14 +26,18 @@ class DecoyDataset(Dataset):
         skipped = 0
         for p in pth_paths:
             target = torch.load(p)
-            casp_ed = target["casp_ed"]
+            dataset_id = target.get("casp_ed", target.get("dataset_id"))
             target_id = target["target_id"]
 
             self.targets_by_target_id[target_id] = target
-            self.targets_by_casp_ed_and_target_id[(casp_ed, target_id)] = target
+            self.targets_by_casp_ed_and_target_id[(dataset_id, target_id)] = target
 
             for decoy in target["graphs"]:
                 decoy_id = decoy.decoy_id
+
+                # Skip loading if the decoy:
+                # - contains all NaN values for one of its local scores
+                # - contains all NaN values for its global scores
                 if hasattr(decoy, "qa_local") and torch.isnan(decoy.qa_local).all(
                     dim=0, keepdim=True
                 ).any(dim=1):
@@ -55,8 +59,8 @@ class DecoyDataset(Dataset):
 
                 self.add_target_feats_to_decoy(target, decoy)
                 self.decoys_by_target_id_and_decoy_id[(target_id, decoy_id)] = decoy
-                self.decoys_by_casp_ed_and_target_id_and_decoy_id[
-                    (casp_ed, target_id, decoy_id)
+                self.decoys_by_ds_ed_and_target_id_and_decoy_id[
+                    (dataset_id, target_id, decoy_id)
                 ] = decoy
 
         if len(self) == 0:
@@ -67,7 +71,17 @@ class DecoyDataset(Dataset):
 
     @staticmethod
     def add_target_feats_to_decoy(target: dict, decoy: Data):
-        decoy.casp_ed = target["casp_ed"]
+        """
+        Some features are shared between all decoys of a target,
+        e.g. casp_ed, target_id, aa sequence, msa_features.
+        Args:
+            target:
+            decoy:
+
+        Returns:
+
+        """
+        decoy.casp_ed = target.get("casp_ed", target.get("dataset_id"))
         decoy.target_id = target["target_id"]
         decoy.n_nodes = decoy.num_nodes
         decoy.n_edges = decoy.num_edges
@@ -91,7 +105,7 @@ class DecoyDataset(Dataset):
         return graph
 
     def __len__(self):
-        return len(self.decoys_by_casp_ed_and_target_id_and_decoy_id)
+        return len(self.decoys_by_ds_ed_and_target_id_and_decoy_id)
 
     @functools.cached_property
     def casp_editions(self) -> Tuple[int]:
@@ -103,10 +117,11 @@ class DecoyDataset(Dataset):
 
     @functools.cached_property
     def keys(self) -> Tuple[Tuple[int, str, str], ...]:
-        return tuple(self.decoys_by_casp_ed_and_target_id_and_decoy_id.keys())
+        return tuple(self.decoys_by_ds_ed_and_target_id_and_decoy_id.keys())
 
 
-def find_pth_files(
+# TODO deprecate this function
+def iter_pth_files(
     data_dir: Union[str, Path],
     casp_ed: Optional[str] = None,
     target_id: Optional[str] = None,
@@ -115,16 +130,17 @@ def find_pth_files(
         casp_ed = "*"
     if target_id is None:
         target_id = "*"
-
-    return (
-        Path(data_dir)
-        .expanduser()
-        .resolve()
-        .glob(f"CASP{casp_ed}/processed/{target_id}.pth")
-    )
+    data_dir = Path(data_dir).expanduser().resolve()
+    return data_dir.glob(f"CASP{casp_ed}/processed/{target_id}.pth")
 
 
 class RandomTargetSampler(Sampler):
+    """
+    Sample decoys from a dataset:
+    targets are randomly sorted,
+    then for each target one decoy is sampled at random.
+    """
+
     def __init__(self, dataset: DecoyDataset, rg: np.random.Generator):
         super().__init__(dataset)
         self.rg = rg
