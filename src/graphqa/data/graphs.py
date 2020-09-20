@@ -9,6 +9,8 @@ from torch_geometric.transforms import PointPairFeatures
 
 class ProteinGraphBuilder(object):
     """
+    Builds a protein graph in pytorch format in the following steps:
+
     - radius_graph connects residues based on their spatial location (distance in angstroms)
     - backbone connects residues based on their separation in the chain (hops)
     - geometric_feats computes distances and angles

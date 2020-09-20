@@ -1,3 +1,24 @@
+"""
+Compute CAD scores between a native structure and a folder of decoys using Voronota.
+
+First download Voronota:
+```bash
+wget -q 'https://github.com/kliment-olechnovic/voronota/releases/download/v1.21.2744/voronota_1.21.2744.tar.gz'
+tar xzf voronota_1.21.2744.tar.gz
+```
+
+Run from the command line as:
+```bash
+python -m graphqa.data.cadscore -vv \
+  --voronota voronota_1.21.2744/voronota-cadscore
+  CASP9/native/T0522.pdb \
+  CASP9/decoys/T0522/ \
+  CASP9/decoys/T0522.cad.npz \
+  134
+```
+"""
+
+import argparse
 import contextlib
 import tempfile
 from pathlib import Path
@@ -8,8 +29,8 @@ from loguru import logger
 import sys
 import time
 
-TIMEOUT = 90  # seconds
-logger.disable("scores.cadscore")
+TIMEOUT_SEC = 90
+logger.disable("graphqa.data.cadscore")
 
 
 class CadScoreError(RuntimeError):
@@ -45,7 +66,12 @@ def parse_output(lines):
     return {k: np.array(v) for k, v in result.items()}
 
 
-def compute_scores(native_path: str, decoys_dir: str, sequence_length: int):
+def compute_scores(
+    native_path: str,
+    decoys_dir: str,
+    sequence_length: int,
+    voronota="voronota-cadscore",
+):
     residue_index = pd.RangeIndex(sequence_length, name="residue_idx")
     decoys = []
     local_scores = []
@@ -62,13 +88,13 @@ def compute_scores(native_path: str, decoys_dir: str, sequence_length: int):
             try:
                 result = subprocess.run(
                     [
-                        "voronota_1.21.2744/voronota-cadscore",
+                        voronota,
                         "--input-target",
-                        native_path,
+                        Path(native_path).expanduser().resolve().as_posix(),
                         "--input-model",
-                        decoy_path,
+                        decoy_path.expanduser().resolve().as_posix(),
                         "--output-residue-scores",
-                        cad_scores_path,
+                        cad_scores_path.expanduser().resolve().as_posix(),
                         "--cache-dir",
                         tmpdir,
                         "--contacts-query-by-code",
@@ -76,7 +102,7 @@ def compute_scores(native_path: str, decoys_dir: str, sequence_length: int):
                     ],
                     capture_output=True,
                     check=True,
-                    timeout=TIMEOUT,
+                    timeout=TIMEOUT_SEC,
                 )
             except subprocess.TimeoutExpired as e:
                 try:
@@ -127,7 +153,7 @@ def compute_scores(native_path: str, decoys_dir: str, sequence_length: int):
         raise CadScoreError(f"No decoy was successfully evaluated for {native_path}")
 
     return {
-        "decoys": decoys,
+        "decoys": np.array(decoys),
         "local_cad": np.stack(local_scores, axis=0),
         "global_cad": np.array(global_scores),
     }
@@ -143,22 +169,37 @@ class LogFilter(object):
     def __call__(self, record):
         return record["level"].no >= self.level_no
 
-# Run as:
-# python -m scores.cadscore CASP9/native/T0522.pdb CASP9/decoys/T0522 /tmp/cadscores.npz 134 -vv
-if __name__ == "__main__":
-    import argparse
 
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("native_pdb")
     parser.add_argument("decoys_dir")
-    parser.add_argument("output_npz")
+    parser.add_argument("output_npz", help="Output path (numpy archive format)")
     parser.add_argument("sequence_length", type=int)
+    parser.add_argument(
+        "--voronota",
+        default="voronota-cadscore",
+        help="Path to voronota-cadscore executable if not in your PATH",
+    )
     parser.add_argument("--verbose", "-v", action="count", default=0)
     args = parser.parse_args()
+    return args
 
-    logger.enable("cadscore")
+
+def run_cadscore(native_pdb, decoys_dir, output_npz, sequence_length, voronota):
+    scores = compute_scores(native_pdb, decoys_dir, sequence_length, voronota)
+    np.savez(output_npz, **scores)
+
+
+def main():
+    args = vars(parse_args())
+
+    logger.enable("graphqa.data.cadscore")
     logger.remove()
-    logger.add(sys.stderr, filter=LogFilter(args.verbose), level=0)
+    logger.add(sys.stderr, filter=LogFilter(args.pop("verbose")), level=0)
 
-    scores = compute_scores(args.native_pdb, args.decoys_dir, args.sequence_length)
-    np.savez(args.output_npz, **scores)
+    run_cadscore(**args)
+
+
+if __name__ == "__main__":
+    main()

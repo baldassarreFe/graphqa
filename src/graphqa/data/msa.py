@@ -71,7 +71,6 @@ class MultipleSequenceAlignment(object):
                 alignment_path.parent.mkdir(exist_ok=True, parents=True)
                 shutil.move(alignment_path, output_path)
 
-
     def run_on_sequence(
         self, sequence: Bio.SeqRecord.SeqRecord
     ) -> Bio.Align.MultipleSeqAlignment:
@@ -117,7 +116,7 @@ def compute_counts(alignment: Bio.Align.MultipleSeqAlignment) -> pd.DataFrame:
     return msa_counts
 
 
-def compute_features(msa_counts: pd.DataFrame) -> pd.DataFrame:
+def compute_msa_features(msa_counts: pd.DataFrame) -> pd.DataFrame:
     msa_freq = msa_counts / msa_counts.values.sum(axis=1, keepdims=True)
     return msa_freq
 
@@ -136,15 +135,15 @@ def parse_args():
     return args
 
 
-def main(input, database, output, cpus):
+def run_msa(input, database, output, cpus):
     input = Path(input).expanduser().resolve()
     database = Path(database).expanduser().resolve()
     output = Path(output).expanduser().resolve()
     hmmer_out = output.parent.joinpath("jackhmmer.sto")
 
     with input.open() as f:
-        num_sequences = sum((1 for s in Bio.SeqIO.parse(f, 'fasta')), 0)
-    logger.info(f'Running on {num_sequences} sequence(s)')
+        num_sequences = sum((1 for s in Bio.SeqIO.parse(f, "fasta")), 0)
+    logger.info(f"Running on {num_sequences} sequence(s)")
 
     msa = MultipleSequenceAlignment(database, cpus)
     msa.run_on_file(input, hmmer_out)
@@ -156,9 +155,13 @@ def main(input, database, output, cpus):
         pd.to_pickle(msa_dict, output)
 
 
+def main():
+    args = parse_args()
+    run_msa(**vars(args))
+
+
 """
 python -m graphqa.data.msa input.fasta database.fasta output.sto
 """
 if __name__ == "__main__":
-    args = parse_args()
-    main(**vars(args))
+    main()

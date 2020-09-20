@@ -13,6 +13,13 @@ class GraphQaPaths(NamedTuple):
 
 
 def dataset_paths(dataset_dir: Union[str, Path]) -> GraphQaPaths:
+    """
+    Args:
+        dataset_dir: root folder of a protein dataset
+
+    Returns:
+        a namedtuple of pathlib.Path entries
+    """
     dataset_dir = Path(dataset_dir).expanduser().resolve()
     return GraphQaPaths(
         name=dataset_dir.name,
