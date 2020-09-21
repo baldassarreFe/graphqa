@@ -72,7 +72,7 @@ def requests_get(url):
 # Documentation of CASP download area for CASP 11
 
 # %%
-response = requests_get('http://predictioncenter.org/download_area/README')
+response = requests_get('https://predictioncenter.org/download_area/README')
 readme = response.text.splitlines()
 i = readme.index('CASP11')
 print(*readme[i: i+12], sep='\n')
@@ -110,7 +110,7 @@ for casp_ed in [9, 10, 11, 12, 13]:
     dest = Path(f'CASP{casp_ed}/sequences.fasta')
     dest.parent.mkdir(exist_ok=True, parents=True)
     
-    response = requests_get(f'http://predictioncenter.org/download_area/'
+    response = requests_get(f'https://predictioncenter.org/download_area/'
                             f'CASP{casp_ed}/sequences/casp{casp_ed}.seq.txt')
     sequences = Bio.SeqIO.parse(io.StringIO(response.text), format='fasta', 
                                 alphabet=Bio.Alphabet.ProteinAlphabet())
@@ -160,11 +160,11 @@ df_natives = []
 regex = re.compile(r'T\d\d\d\d(?:s\d)?.pdb')
 
 native_urls = {
-    9: 'http://predictioncenter.org/download_area/CASP9/targets/casp9.targ_unsplit.tgz',
-    10: 'http://predictioncenter.org/download_area/CASP10/targets/casp10.targets_unsplitted.noT0695T0739.tgz',
-    11: 'http://predictioncenter.org/download_area/CASP11/targets/casp11.targets_unsplitted.release11242014.tgz',
-    12: 'http://predictioncenter.org/download_area/CASP12/targets/casp12.targets_T0.releaseDec022016.tgz',
-    13: 'http://predictioncenter.org/download_area/CASP13/targets/casp13.targets.T.4public.tar.gz',
+    9: 'https://predictioncenter.org/download_area/CASP9/targets/casp9.targ_unsplit.tgz',
+    10: 'https://predictioncenter.org/download_area/CASP10/targets/casp10.targets_unsplitted.noT0695T0739.tgz',
+    11: 'https://predictioncenter.org/download_area/CASP11/targets/casp11.targets_unsplitted.release11242014.tgz',
+    12: 'https://predictioncenter.org/download_area/CASP12/targets/casp12.targets_T0.releaseDec022016.tgz',
+    13: 'https://predictioncenter.org/download_area/CASP13/targets/casp13.targets.T.4public.tar.gz',
 }
 
 for casp_ed, url in native_urls.items():
@@ -231,7 +231,7 @@ del df_merge
 # #### Downloaded from the Protein Data Bank
 #
 # These native structures are downloaded from the Protein Data Bank using 
-# [the mapping from CASP id to PDB code can](http://predictioncenter.org/casp11/targetlist.cgi?view_targets=all).
+# [the mapping from CASP id to PDB code can](https://predictioncenter.org/casp11/targetlist.cgi?view_targets=all).
 #
 # Metadata about these structures is saved in [`natives_pdb.csv`](./natives_pdb.csv).
 #
@@ -293,7 +293,7 @@ for casp_ed in [9,10,11,12,13]:
         dest = Path(f'CASP{casp_ed}') / 'native_pdb'
         dest.mkdir(exist_ok=True, parents=True)
 
-        response = requests_get(f'http://predictioncenter.org/casp{casp_ed}/targetlist.cgi?view_targets=all')
+        response = requests_get(f'https://predictioncenter.org/casp{casp_ed}/targetlist.cgi?view_targets=all')
         soup = bs4.BeautifulSoup(response.content)
 
         for target_dict in extract_targets(soup):
@@ -347,7 +347,7 @@ del df_merge
 # ### Server predictions
 #
 # These are the tertiary structures as predicted from the servers participating in CASP
-# ([submission file format](http://predictioncenter.org/casp13/index.cgi?page=format#TS)).
+# ([submission file format](https://predictioncenter.org/casp13/index.cgi?page=format#TS)).
 #
 # The submission happens in two stages, the same target might get different names in the two stages.
 #
@@ -367,7 +367,7 @@ for target in df_natives.itertuples():
 
     # Download all decoys for this target, compute md5sum and save them to disk
     response = requests_get(
-        f'http://predictioncenter.org/download_area/'
+        f'https://predictioncenter.org/download_area/'
         f'CASP{target.casp_ed}/server_predictions/'
         f'{target.target_id}.3D.srv.tar.gz'
     )
@@ -402,7 +402,7 @@ for target in df_natives.itertuples():
     # don't save to disk, just compute md5sum and update the dict
     for s in ['stage1', 'stage2']:
         response = requests_get(
-            f'http://predictioncenter.org/download_area/'
+            f'https://predictioncenter.org/download_area/'
             f'CASP{target.casp_ed}/server_predictions/'
             f'{target.target_id}.{s}.3D.srv.tar.gz'
         )
@@ -576,7 +576,7 @@ regex = re.compile(r'T\d\d\d\d(?:s\d)?.txt')
 # Single table with all targets and decoys
 
 # %%
-url = 'http://predictioncenter.org/download_area/CASP9/refinement_result_tables_assessor.txt'
+url = 'https://predictioncenter.org/download_area/CASP9/refinement_result_tables_assessor.txt'
 response = requests_get(url)
 
 df = pd.read_csv(io.BytesIO(response.content), sep='\t')
@@ -604,7 +604,7 @@ df
 # Single .tar.gz file with separate .txt files inside
 
 # %%
-url = 'http://predictioncenter.org/download_area/CASP10/SUMMARY_TABLES/T0_all.tar.gz'
+url = 'https://predictioncenter.org/download_area/CASP10/SUMMARY_TABLES/T0_all.tar.gz'
 response = requests_get(url)
 archive = tarfile.open(fileobj=io.BytesIO(response.content), mode='r')
 
@@ -638,7 +638,7 @@ df
 # but also has some additional targets that are not in the .tar.gz file
 
 # %%
-url = 'http://predictioncenter.org/download_area/CASP11/SUMMARY_TABLES/T0xxx_09.05.tar.gz'
+url = 'https://predictioncenter.org/download_area/CASP11/SUMMARY_TABLES/T0xxx_09.05.tar.gz'
 response = requests_get(url)
 archive = tarfile.open(fileobj=io.BytesIO(response.content), mode='r')
 
@@ -650,7 +650,7 @@ for member in archive.getmembers():
         dfs[member.name] = df
         
 # Additional results that in the .tar.gz file are missing or outdated
-url = 'http://predictioncenter.org/download_area/CASP11/SUMMARY_TABLES/'
+url = 'https://predictioncenter.org/download_area/CASP11/SUMMARY_TABLES/'
 for f in ['T0774.txt', 'T0812.txt', 'T0837.txt', 
           'T0840.txt', 'T0841.txt', 'T0851.txt']:
     response = requests_get(url + f)
@@ -680,7 +680,7 @@ df
 # No .tar.gz file, only a list of .txt files
 
 # %%
-base_url = 'http://predictioncenter.org/download_area/CASP12/SUMMARY_TABLES/'
+base_url = 'https://predictioncenter.org/download_area/CASP12/SUMMARY_TABLES/'
 request = requests_get(base_url)
 soup = bs4.BeautifulSoup(request.content)
 
@@ -715,7 +715,7 @@ df
 # but also has some additional targets that are not in the .tar.gz file
 
 # %%
-url = 'http://predictioncenter.org/download_area/CASP13/results/tables/casp13.res_tables.T.tar.gz'
+url = 'https://predictioncenter.org/download_area/CASP13/results/tables/casp13.res_tables.T.tar.gz'
 response = requests_get(url)
 archive = tarfile.open(fileobj=io.BytesIO(response.content), mode='r')
 
@@ -770,7 +770,7 @@ del df
 # ## Other group's QA predictions
 #
 # These are the QA predictions submitted by other participants to the QA track in CASP 
-# ([file format reference](http://predictioncenter.org/casp13/index.cgi?page=format#QA)).
+# ([file format reference](https://predictioncenter.org/casp13/index.cgi?page=format#QA)).
 #
 # Start with `PFRMAT QA`
 #
@@ -783,7 +783,7 @@ del df
 # Timeline example.
 # - May 1, 9am PDT - target T0644 is released for prediction in non-QA categories.
 # - May 4, noon - the deadline for submitting tertiary structure predictions by servers.
-# - May 6, noon - the first set of server TS predictions (up to 20 models selected primarily to test single-model methods) is sent to the registered QA servers and posted on the casp14 archive page (http://predictioncenter.org/download_area/CASP14/server_predictions/). QA predictions (marked as MODEL 1) for this subset are accepted for two days.
+# - May 6, noon - the first set of server TS predictions (up to 20 models selected primarily to test single-model methods) is sent to the registered QA servers and posted on the casp14 archive page (https://predictioncenter.org/download_area/CASP14/server_predictions/). QA predictions (marked as MODEL 1) for this subset are accepted for two days.
 # - May 8, noon - deadline for "stage 1" QA predictions. The second set of server TS predictions (150 models selected to test both, single-model and clustering methods) is sent to the registered QA servers and posted on the casp14 archive page. QA predictions (marked as MODEL 2) for this second subset of models are accepted for two more days.
 # - May 10, noon - deadline for "stage 2" QA predictions. All server TS predictions are posted on the casp14 archive page. No further QA predictions (from servers or manual groups) are accepted for this target.
 #
@@ -861,7 +861,7 @@ def extract_groups(soup):
         yield group_id, group_name
 
 for casp_ed in [11,12,13]:
-    response = requests_get(f'http://predictioncenter.org/casp{casp_ed}/docs.cgi?view=groupsbyname')
+    response = requests_get(f'https://predictioncenter.org/casp{casp_ed}/docs.cgi?view=groupsbyname')
     soup = bs4.BeautifulSoup(response.content)
     
     df_groups = pd.DataFrame(
@@ -882,7 +882,7 @@ display(df_groups.style.set_caption('CASP 13').hide_index())
 
 # %%
 dest = 'CASP9/QA_predictions'
-base_url = 'http://predictioncenter.org/download_area/CASP9/predictions/'
+base_url = 'https://predictioncenter.org/download_area/CASP9/predictions/'
 qa_urls = [
     'QA_T0515-T0539.tar.gz',
     'QA_T0540-T0569.tar.gz',
@@ -904,7 +904,7 @@ if not Path(dest).is_dir():
 
 # %%
 dest = 'CASP10/QA_predictions'
-base_url = 'http://predictioncenter.org/download_area/CASP10/predictions/'
+base_url = 'https://predictioncenter.org/download_area/CASP10/predictions/'
 qa_urls = [
     'QA_T0644-T0669.tar.gz',
     'QA_T0670-T0699.tar.gz',
@@ -922,7 +922,7 @@ if not Path(dest).is_dir():
 
 # %%
 dest = 'CASP11/QA_predictions'
-base_url = 'http://predictioncenter.org/download_area/CASP11/predictions/'
+base_url = 'https://predictioncenter.org/download_area/CASP11/predictions/'
 qa_urls = [
     'QA_T0759-799.tar.gz',
     'QA_T0800-829.tar.gz',
@@ -939,7 +939,7 @@ if not Path(dest).is_dir():
 
 # %%
 dest = 'CASP12/QA_predictions'
-base_url = 'http://predictioncenter.org/download_area/CASP12/predictions/'
+base_url = 'https://predictioncenter.org/download_area/CASP12/predictions/'
 qa_urls = [
     'CASP12_QA_T08x.tgz',
     'CASP12_QA_T09x.tgz',
@@ -960,7 +960,7 @@ if not Path(dest).is_dir():
 
 # %%
 dest = 'CASP13/QA_predictions'
-base_url = 'http://predictioncenter.org/download_area/CASP13/predictions/QA/'
+base_url = 'https://predictioncenter.org/download_area/CASP13/predictions/QA/'
 qa_urls = [
     # Stage 1
     'QA1.all.tar.gz',
@@ -988,7 +988,7 @@ if not Path(dest).is_dir():
 # T0949TS145_1 -> QUARK_TS1
 mapping = {}
 
-base_url = "http://www.predictioncenter.org/download_area/CASP13/predictions/TS_as_submitted/"
+base_url = "https://www.predictioncenter.org/download_area/CASP13/predictions/TS_as_submitted/"
 urls = [
    "T0949.TS_as_accepted.tar.gz",
    "T0950.TS_as_accepted.tar.gz",
@@ -1243,14 +1243,17 @@ for casp_ed in [11,12,13]: # [9,10,11,12,13]
     del df_global
     
     # Local scores
-    df_local = pd.concat(df_local.values(), keys=df_local.keys(), names=['qa_group_id', 'target_id', 'decoy_id', 'stage']).to_frame()
-    df_local.sort_index(inplace=True)
-    (
-        df_local
-        .to_pickle(f'CASP{casp_ed}/QA_predictions/local.pkl.xz', compression='xz')
-    )
+    df_local = pd.concat(
+        df_local.values(), 
+        keys=df_local.keys(), 
+        names=['qa_group_id', 'target_id', 'decoy_id', 'stage']
+    ).sort_index().to_frame()
+    df_local.to_pickle(f'CASP{casp_ed}/QA_predictions/local.pkl.xz', compression='xz')
+    
     print('Raw dataframe')
     display(df_local)
+    
+    print('By stage')
     display(
         df_local
         .groupby(['qa_group_id', 'target_id', 'decoy_id', 'stage'])
@@ -1259,6 +1262,7 @@ for casp_ed in [11,12,13]: # [9,10,11,12,13]
         .size()
         .unstack('stage', fill_value=0)
     )
+    del df_local
 
 # %%
 # ! du -hsc CASP*/QA_predictions/*.pkl.xz
