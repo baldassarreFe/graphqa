@@ -7,7 +7,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.5.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -44,15 +44,16 @@ docker_client = docker.from_env()
 # Pull the [OpenStructure](https://www.openstructure.org/docs/2.0/install/) docker image and start a container with the LDDT python script mounted inside:
 
 # %% {"language": "bash"}
-# docker pull -q 'registry.scicore.unibas.ch/schwede/openstructure:2.1.0'
+# docker pull 'registry.scicore.unibas.ch/schwede/openstructure:2.1.0'
 # docker stop lddt 2> /dev/null
 # docker run --rm --tty --detach \
 #   --name 'lddt' \
 #   --entrypoint 'bash' \
 #   --mount "type=bind,source=$(realpath ../src/graphqa/data/lddt_docker.py),target=/lddt.py" \
-#   --mount "type=bind,source=${PWD},target=/input" \
-#   --mount "type=bind,source=${PWD},target=/output" \
-#   'registry.scicore.unibas.ch/schwede/openstructure:2.0.0'
+#   --mount "type=bind,source=$(realpath ../data),target=/native" \
+#   --mount "type=bind,source=$(realpath ../data),target=/decoy" \
+#   --mount "type=bind,source=$(realpath ../data),target=/output" \
+#   'registry.scicore.unibas.ch/schwede/openstructure:2.1.0'
 # docker ps --filter "name=lddt"
 
 # %%
@@ -85,10 +86,11 @@ with Parallel(n_jobs=10, prefer="threads") as pool:
         ).is_file()
     ]
     logger.info(f"Launching {len(missing_targets)} jobs")
-    pool(delayed(run_lddt_in_docker)(target_dict) for target_dict in missing_targets)
+    pool(delayed(run_lddt_in_docker)(**target_dict) for target_dict in missing_targets)
 
+# %%
 pdb = set(p.with_suffix("").name for p in Path().glob("CASP*/native/*.pdb"))
-lddt = set(p.with_suffix("").name for p in Path().glob("CASP*/decoys/*.lddt.npz"))
+lddt = set(p.with_suffix("").with_suffix("").name for p in Path().glob("CASP*/decoys/*.lddt.npz"))
 for fail in pdb - lddt:
     logger.warning(f"LDDT failed on: {fail}")
 
