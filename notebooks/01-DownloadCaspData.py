@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.5.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -52,7 +52,6 @@ import Bio.PDB
 import Bio.SeqIO
 import Bio.Align.AlignInfo
 import Bio.AlignIO
-import Bio.Alphabet
 
 from loguru import logger
 from joblib import Parallel, delayed
@@ -61,7 +60,6 @@ from IPython.display import display, Markdown, HTML, Video
 
 from graphqa.data.aminoacids import *
 from graphqa.data.decoys import ca_coord_and_orientation
-import casp13_secret
 
 @functools.lru_cache(maxsize=128)
 def requests_get(url):
@@ -112,8 +110,7 @@ for casp_ed in [9, 10, 11, 12, 13]:
     
     response = requests_get(f'https://predictioncenter.org/download_area/'
                             f'CASP{casp_ed}/sequences/casp{casp_ed}.seq.txt')
-    sequences = Bio.SeqIO.parse(io.StringIO(response.text), format='fasta', 
-                                alphabet=Bio.Alphabet.ProteinAlphabet())
+    sequences = Bio.SeqIO.parse(io.StringIO(response.text), format='fasta')
     sequences = filter(is_qa_target, sequences)
     sequences = map(rename, sequences)
     
@@ -170,10 +167,14 @@ native_urls = {
 for casp_ed, url in native_urls.items():
     dest = Path(f'CASP{casp_ed}') / 'native'
     dest.mkdir(exist_ok=True, parents=True)
-#     ! curl -s {url} | tar xz --directory {dest.as_posix()}
+    # ! curl -s {url} | tar xz --directory {dest.as_posix()}
     
     if casp_ed == 13:
-#         ! echo '--user {casp13_secret.user}:{casp13_secret.pwd}' | curl -s --config - {casp13_secret.url} | tar xz --directory {dest}
+        try:
+            import casp13_secret
+            # ! echo '--user {casp13_secret.user}:{casp13_secret.pwd}' | curl -s --config - {casp13_secret.url} | tar xz --directory {dest}
+        except ImportError:
+            print("Could not get limited-access CASP13 files")
 
     for f in dest.iterdir():
         if not regex.fullmatch(f.name):
@@ -894,7 +895,7 @@ qa_urls = [
 if not Path(dest).is_dir():
     Path(dest).mkdir(parents=True)
     for qa_url in qa_urls:
-#         ! curl -s {base_url}{qa_url} | tar xz --directory {dest}
+        # ! curl -s {base_url}{qa_url} | tar xz --directory {dest}
     for p in Path(dest).glob('T????QA???_?'):
         Path(dest).joinpath(p.name[:5]).mkdir(exist_ok=True)
         p.rename(Path(dest) / p.name[:5] / p.name)
@@ -915,7 +916,7 @@ qa_urls = [
 if not Path(dest).is_dir():
     Path(dest).mkdir(parents=True)
     for qa_url in qa_urls:
-#         ! curl -s {base_url}{qa_url} | tar xz --strip 1 --directory {dest}
+        # ! curl -s {base_url}{qa_url} | tar xz --strip 1 --directory {dest}
 
 # ! ls {dest} | wc -l
 # ! du -sh {dest}
@@ -932,7 +933,7 @@ qa_urls = [
 if not Path(dest).is_dir():
     Path(dest).mkdir(parents=True)
     for qa_url in qa_urls:
-#         ! curl -s {base_url}{qa_url} | tar xz --strip 1 --directory {dest}
+        # ! curl -s {base_url}{qa_url} | tar xz --strip 1 --directory {dest}
         
 # ! ls {dest} | wc -l
 # ! du -sh {dest}
@@ -948,7 +949,7 @@ qa_urls = [
 if not Path(dest).is_dir():
     Path(dest).mkdir(parents=True)
     for qa_url in qa_urls:
-#         ! curl -s {base_url}{qa_url} | tar xz --directory {dest}
+        # ! curl -s {base_url}{qa_url} | tar xz --directory {dest}
         
 # ! ls {dest} | wc -l
 # ! du -sh {dest}
@@ -978,7 +979,7 @@ qa_urls = [
 if not Path(dest).is_dir():
     Path(dest).mkdir(parents=True)
     for qa_url in qa_urls:
-#         ! curl -s {base_url}{qa_url} | tar xz --directory {dest}
+        # ! curl -s {base_url}{qa_url} | tar xz --directory {dest}
 
 # ! ls {dest} | wc -l
 # ! du -sh {dest}
@@ -1085,7 +1086,7 @@ for url in urls:
     target_dir = Path('/tmp/casp13').joinpath(url[:-7])
     if not target_dir.is_dir():
         target_dir.mkdir(parents=True)
-#         ! curl -s {base_url}{url} | tar xz --strip 2 --directory {target_dir.as_posix()}
+        # ! curl -s {base_url}{url} | tar xz --strip 2 --directory {target_dir.as_posix()}
     
     for p in target_dir.iterdir():
         try:
@@ -1220,7 +1221,7 @@ for casp_ed in [11,12,13]: # [9,10,11,12,13]
     (
         df_global
         .set_index(['qa_group_id', 'target_id', 'decoy_id', 'stage'])
-        .to_pickle(f'CASP{casp_ed}/QA_predictions/global.pkl.xz', compression='xz')
+        .to_pickle(f'CASP{casp_ed}/QA_predictions/global.pkl')
     )
     
     print('Raw dataframe')
@@ -1243,12 +1244,13 @@ for casp_ed in [11,12,13]: # [9,10,11,12,13]
     del df_global
     
     # Local scores
+    df_local = {k: df_local[k] for k in sorted(df_local.keys())}
     df_local = pd.concat(
         df_local.values(), 
         keys=df_local.keys(), 
         names=['qa_group_id', 'target_id', 'decoy_id', 'stage']
-    ).sort_index().to_frame()
-    df_local.to_pickle(f'CASP{casp_ed}/QA_predictions/local.pkl.xz', compression='xz')
+    ).to_frame('pred')
+    df_local.to_pickle(f'CASP{casp_ed}/QA_predictions/local.pkl')
     
     print('Raw dataframe')
     display(df_local)
@@ -1264,8 +1266,19 @@ for casp_ed in [11,12,13]: # [9,10,11,12,13]
     )
     del df_local
 
-# %%
-# ! du -hsc CASP*/QA_predictions/*.pkl.xz
+# %% language="bash"
+# # Global QA predictions are small enough
+# du -hsc CASP*/QA_predictions/global.pkl
+# echo
+#
+# # Local QA predictions should be compressed
+# du -hsc CASP*/QA_predictions/local.pkl
+# for f in CASP*/QA_predictions/local.pkl; do
+#   xz -1 --compress "$f"
+# done
+# echo
+#
+# du -hsc CASP*/QA_predictions/local.pkl.xz
 
 # %% [markdown]
 # ## Official QA local scores
@@ -1287,10 +1300,10 @@ links = [
 ]
 with tempfile.NamedTemporaryFile(mode='w') as f:
     f.write('\n'.join([base_url + l for l in links]))
-#     ! wget --input-file {f.name} --directory-prefix='CASP13/QA_official'
+    # ! wget --quiet --input-file {f.name} --directory-prefix='CASP13/QA_official'
 
 for l in links:
-#     ! tar xf "CASP13/QA_official/{l}" --directory 'CASP13/QA_official/' && rm "CASP13/QA_official/{l}"
+    # ! tar xf "CASP13/QA_official/{l}" --directory 'CASP13/QA_official/' && rm "CASP13/QA_official/{l}"
 
 # ! du -sh CASP13/QA_official/
 
