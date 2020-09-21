@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.5.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -72,7 +72,6 @@ import Bio.PDB
 import Bio.SeqIO
 import Bio.Align.AlignInfo
 import Bio.AlignIO
-import Bio.Alphabet
 
 from loguru import logger
 from joblib import Parallel, delayed
@@ -84,7 +83,7 @@ from graphqa.data.aminoacids import *
 pd.set_option("display.max_columns", 25)
 
 # %%
-alignments = Bio.AlignIO.parse("CASP11/alignments.sto", "stockholm", alphabet=Bio.Alphabet.ProteinAlphabet())
+alignments = Bio.AlignIO.parse("/tmp/alignments.sto", "stockholm")
 for alignment in alignments:
     if alignment[0].id == 'T0780':
         break
@@ -175,22 +174,23 @@ plt.close(fig)
 
 # %% [markdown]
 # ## Process all data
-#
-# ```bash
-# for ed in 9, 10, 11, 12, 13; do
+
+# %% language="bash"
+# for ed in 9 10 11 12 13; do
 #   jackhmmer -N 3 -E .001 --incE 0.001 --cpu 4 \
 #     -o "CASP${ed}/jackhmmer.out" \
 #     -A "CASP${ed}/alignments.sto" \
 #     "CASP${ed}/sequences.fasta" 'uniref50.fasta' &
 # done
 # wait
-# ```
+#
+# du -shc CASP*/alignments.sto
 
 # %%
 def compute_and_save(casp_ed):
     path = f'CASP{casp_ed}/alignments.sto'
     all_msa_counts = {}
-    for alignment in Bio.AlignIO.parse(path, format="stockholm", alphabet=Bio.Alphabet.ProteinAlphabet()):
+    for alignment in Bio.AlignIO.parse(path, format="stockholm"):
         target_id = alignment[0].id
         msa_counts = msa_counts_np(alignment)
         all_msa_counts[target_id] = msa_counts
@@ -198,3 +198,6 @@ def compute_and_save(casp_ed):
 
 with Parallel(n_jobs=5) as pool:
     pool(delayed(compute_and_save)(casp_ed) for casp_ed in [9, 10, 11, 12, 13])
+    
+# ! rm CASP*/alignments.sto
+# ! du -shc CASP*/alignments.pkl
