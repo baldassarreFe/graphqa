@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loguru import logger
-
 """
 First download and compile the executable from [Zhang lab](https://zhanglab.ccmb.med.umich.edu/TM-score/):
 
@@ -13,9 +11,22 @@ rm TMscore.cpp
 
 Tested with latest update 2019/11/25 (see .cpp file).
 
-Run as:
+Run as (the TMscore executable should be found in your `PATH` or passed using the `--tmscore` parameter):
+```
 python -m graphqa.data.tmscore native.pdb decoys/ output.npz
+```
+
+The output of this script is a dictionary of Numpy arrays in .npz format:
+```
+{
+    "decoy":   [str, ...]
+    "rmsd":    [float, ...]
+    "tmscore": [float, ...]
+    "gdt_ts":  [float, ...]
+    "gdt_ha":  [float, ...]
+}
 """
+
 import shutil
 import argparse
 import tempfile
@@ -25,10 +36,16 @@ from pathlib import Path
 from typing import Union, NamedTuple, List, Iterator
 
 import numpy as np
+from loguru import logger
 
 
 class TmScore(object):
     def __init__(self, tm_score="TMscore", timeout_sec=90):
+        """
+        Args:
+            tm_score: path to the TMscore executable (if not in your PATH)
+            timeout_sec: timeout for TMscore
+        """
         self.tm_score = shutil.which(tm_score)
         if self.tm_score is None:
             raise ValueError(f"TMscore executable not found: {tm_score}")
@@ -97,7 +114,7 @@ class TmScore(object):
                         self.tm_score,
                         "-dir1",
                         # TMscore really requires the dir to have a trailing '/'
-                        Path(decoys_dir).expanduser().resolve().as_posix() + '/',
+                        Path(decoys_dir).expanduser().resolve().as_posix() + "/",
                         decoys_list,
                         Path(native_path).expanduser().resolve().as_posix(),
                         "-outfmt",
@@ -105,6 +122,7 @@ class TmScore(object):
                     ],
                     capture_output=True,
                     check=True,
+                    # TODO: make timeout prop to num_decoys
                     timeout=self.timeout_sec,
                 )
             except subprocess.TimeoutExpired as e:
@@ -142,17 +160,19 @@ class TmScore(object):
     @staticmethod
     @contextlib.contextmanager
     def _decoys_list_file(decoys_dir):
-        # TMscore can score all decoys in a directory by reading
-        # their paths one per line from a text file
+        """
+        TMscore can score all decoys in a directory by reading their paths from a text file (one per line).
+        This context manager yields a temporary file with a list of decoys and the number of decoys.
+        """
         decoys_dir = Path(decoys_dir).expanduser().resolve()
         if not decoys_dir.is_dir():
-            raise ValueError(f'Not a directory: {decoys_dir}')
+            raise ValueError(f"Not a directory: {decoys_dir}")
 
         decoys = list(decoys_dir.glob("*.pdb"))
         if len(decoys) == 0:
             logger.warning(f"No decoys foud in {decoys_dir}")
 
-        with tempfile.NamedTemporaryFile("w", prefix='tmscore', suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile("w", prefix="tmscore", suffix=".txt") as f:
             f.writelines(f"{p.name}\n" for p in decoys)
             f.flush()
             yield f.name, len(decoys)
@@ -170,7 +190,7 @@ class TmScoreError(Exception):
     pass
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("native_pdb")
     parser.add_argument("decoys_dir")
@@ -178,13 +198,36 @@ def main():
     parser.add_argument("--tmscore", default="TMscore", help="TMscore executable")
     parser.add_argument("--timeout", default=90, type=int, help="TMscore timeout")
     args = parser.parse_args()
+    return args
 
-    tmscore = TmScore(args.tmscore, timeout_sec=args.timeout)
-    scores = tmscore.score_dir(args.native_pdb, args.decoys_dir)
-    # Dict of lists from list of named tuples (ugly)
-    scores_dict = dict(zip(TmScoreOutput._fields, zip(*scores)))
-    scores_dict = {k: np.array(v) for k, v in scores_dict.items()}
-    np.savez(args.output_npz, **scores_dict)
+
+def run_tmscore(native_pdb, decoys_dir, output_npz, tmscore="TMscore", timeout=90):
+    """
+    Run TMscore between a native structure and a folder of decoys.
+    Save the output as a .npz file
+
+    Args:
+        native_pdb:
+        decoys_dir:
+        output_npz:
+        tmscore:
+        timeout:
+    """
+    tmscore = TmScore(tmscore, timeout_sec=timeout)
+    scores_list = tmscore.score_dir(native_pdb, decoys_dir)
+
+    # List of namedtuples -> dict of lists
+    scores_dict = dict(zip(
+        TmScoreOutput._fields,
+        map(np.array, zip(*scores_list))
+    ))
+
+    np.savez(output_npz, **scores_dict)
+
+
+def main():
+    args = parse_args()
+    run_tmscore(**vars(args))
 
 
 if __name__ == "__main__":

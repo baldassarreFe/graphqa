@@ -5,7 +5,7 @@ Try it yourself!
 A simple implementation of an evaluation server is available at this [link](http://isengard.csc.kth.se:8585/).
 
 ## Initial setup
-Clone repository, install package and prepare directory structure:
+Clone repository, install dependencies in a conda environment, install GraphQA:
 ```bash
 git clone https://github.com/baldassarreFe/graphqa
 cd graphqa
@@ -17,18 +17,37 @@ conda activate graphqa
 pip install .
 ```
 
-Download and preprocess the data:
+Run the [DownloadCaspData](notebooks/01-DownloadCaspData.ipynb) notebook to download 
+raw protein data from the CASP website.
+
+Prepare all preprocessing tools: 
 ```bash
-data/download-datasets.sh
-for f in data/*.h5; do
-    python -m proteins.dataset preprocess --filepath "${f}" --destpath "${f%.h5}" [--compress]
-done
+docker pull 'registry.scicore.unibas.ch/schwede/openstructure:2.1.0'
+
+git clone https://github.com/cmbi/dssp /tmp/dssp
+pushd /tmp/dssp
+git checkout 697deab74011bfbd55891e9b8d5d47b8e4ef0e38
+docker build -t dssp .
+popd
+
+wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref50/uniref50.fasta.gz
+tar xzf uniref50.fasta.gz
+
+wget -q 'https://github.com/kliment-olechnovic/voronota/releases/download/v1.21.2744/voronota_1.21.2744.tar.gz'
+tar xzf voronota_1.21.2744.tar.gz
+
+wget -q 'https://zhanglab.ccmb.med.umich.edu/TM-score/TMscore.cpp'
+g++ -static -O3 -ffast-math -lm -o TMscore TMscore.cpp 
 ```
 
-Tensorboard plugins: layout of custom scalars and hyper parameters
+Run preprocessing
 ```bash
-python -m proteins.layout runs/
-python -m proteins.hparams runs/
+for CASP in data/CASP{9..13}; do
+  python -m graphqa.data.preprocess $CASP uniref50.fasta \
+    --train
+    --tmscore ./TMscore
+    --voronota ./voronota_1.21.2744/voronota-cadscore    
+done
 ```
 
 ## Training

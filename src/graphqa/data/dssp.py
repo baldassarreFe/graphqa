@@ -206,35 +206,51 @@ def parse_args():
     return args
 
 
-def dssp(input, output, threads, verbose, skip_existing=False):
-    input = Path(input).expanduser().resolve()
-    output = Path(output).expanduser().resolve()
+def run_dssp(input_dir_or_tar, output_dir, threads, verbose, skip_existing=False):
+    """
+    For each .pdb file compute DSSP features and save them as a .dssp file with the same name.
 
-    if input.is_file():
-        output.mkdir(exist_ok=True, parents=True)
-        pdb_files = extract_tar(input, output)
+    Args:
+        input_dir_or_tar: directory or tar archive with .pdb files
+        output_dir: output directory (if input is a tar archive it will be extracted here)
+        threads: number of joblib threads to parallelize the work
+        verbose: verbosity of joblib
+        skip_existing: skip .pdb file if the corresponding .dssp file exists
+
+    """
+    input_dir_or_tar = Path(input_dir_or_tar).expanduser().resolve()
+    output_dir = Path(output_dir).expanduser().resolve()
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    if input_dir_or_tar.is_file() and input_dir_or_tar.suffix in {".tar", ".tar.gz"}:
+        pdb_files = extract_tar(input_dir_or_tar, output_dir)
         for p in pdb_files:
             if p.suffix == "":
                 p.rename(p.with_suffix(".pdb"))
-        input = output
-    elif input.is_dir():
-        pdb_files = list(input.glob("**/*.pdb"))
+        input_dir = output_dir
+    elif input_dir_or_tar.is_dir():
+        input_dir = input_dir_or_tar
+        pdb_files = list(input_dir.glob("**/*.pdb"))
     else:
-        raise ValueError(f"Invalid input: {input}")
+        raise ValueError(f"Invalid input: {input_dir_or_tar}")
 
     logger.info(f"Running on {len(pdb_files)} pdb files")
     with warnings.catch_warnings():
         # Ignore PDB warnings about missing atom elements
         warnings.simplefilter("ignore", Bio.PDB.PDBExceptions.PDBConstructionWarning)
 
-        with DsspDocker(input, output, skip_existing) as dssp:
+        # Create a single container where multiple dssp processes can run
+        with DsspDocker(input_dir, output_dir, skip_existing) as dssp_container:
+
+            # Use threads instead of processes for parallelization
+            # since every thread simply has to start a process inside docker and wait.
             with Parallel(n_jobs=threads, verbose=verbose, prefer="threads") as pool:
-                pool(delayed(dssp.run)(pdb_file) for pdb_file in pdb_files)
+                pool(delayed(dssp_container.run)(pdb_file) for pdb_file in pdb_files)
 
 
 def main():
     args = parse_args()
-    dssp(**vars(args))
+    run_dssp(**vars(args))
 
 
 """
