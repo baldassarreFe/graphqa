@@ -8,7 +8,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.5.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -53,7 +53,6 @@ import Bio.PDB
 import Bio.SeqIO
 import Bio.Align.AlignInfo
 import Bio.AlignIO
-import Bio.Alphabet
 
 from loguru import logger
 from joblib import Parallel, delayed
@@ -99,10 +98,10 @@ from graphqa.data.aminoacids import *
 # Start a container with the current folder with the pdb files mounted as `/data`:
 
 # %% {"language": "bash"}
-# (docker top dssp && docker stop dssp) > /dev/null
+# (docker top dssp && docker stop dssp) 2>&1 > /dev/null
 # docker run --rm --tty --detach \
 #   --name dssp \
-#   --mount "type=bind,source=${PWD},target=/data" \
+#   --mount "type=bind,source=$(realpath ../data),target=/data" \
 #   'dssp'
 # docker ps --filter "name=dssp"
 
@@ -176,10 +175,10 @@ for decoy_path in [
     structure = parser.get_structure("tmp", decoy_path)
     writer = Bio.PDB.PDBIO()
     writer.set_structure(structure)
-    writer.save("tmp.pdb", preserve_atom_numbering=True)
+    writer.save("/tmp/tmp.pdb", preserve_atom_numbering=True)
 
     print("  Rewritten:")
-    with open("tmp.pdb") as f:
+    with open("/tmp/tmp.pdb") as f:
         print(*(f"    |{l[:-1]}|" for l in f.readlines()[:4]), sep="\n")
     print()
 
@@ -187,6 +186,9 @@ for decoy_path in [
 # %%
 @logger.catch(reraise=False)
 def run_dssp_in_docker(decoy_path: str, output_path: str):
+    docker_client = docker.from_env()
+    dssp_container = docker_client.containers.get("dssp")
+    
     exit_code, (stdout, stderr) = dssp_container.exec_run(
         cmd=["/app/mkdssp", "/data/" + decoy_path], demux=True
     )
@@ -195,6 +197,7 @@ def run_dssp_in_docker(decoy_path: str, output_path: str):
         # Try a reformatted version of the decoy
         parser = Bio.PDB.PDBParser(QUIET=True)
         structure = parser.get_structure("tmp", decoy_path)
+        
         new_decoy_path = f"{decoy_path}_tmp.pdb"
         writer = Bio.PDB.PDBIO()
         writer.set_structure(structure)
@@ -215,12 +218,11 @@ def run_dssp_in_docker(decoy_path: str, output_path: str):
     with open(output_path, "wb") as f:
         f.write(stdout)
 
-
 with warnings.catch_warnings():
     # Ignore PDB warnings about missing atom elements
     warnings.simplefilter("ignore", Bio.PDB.PDBExceptions.PDBConstructionWarning)
 
-    with Parallel(n_jobs=10, verbose=1, prefer="threads") as pool:
+    with Parallel(n_jobs=30, verbose=1, prefer="threads") as pool:
         missing_decoys = [
             dict(
                 decoy_path=f"CASP{decoy.casp_ed}/decoys/{decoy.target_id}/{decoy.decoy_id}.pdb",
@@ -231,7 +233,11 @@ with warnings.catch_warnings():
                 f"CASP{decoy.casp_ed}/decoys/{decoy.target_id}/{decoy.decoy_id}.dssp"
             ).is_file()
         ]
+        logger.info(f"Running on {len(missing_decoys)} .pdb files")
         pool(delayed(run_dssp_in_docker)(**decoy_dict) for decoy_dict in missing_decoys)
+
+# %% [markdown]
+# Check how many `.pdb` and `.dssp` files we have to see where DSSP failed
 
 # %%
 pdb = set(p.with_suffix("") for p in Path().glob("CASP*/decoys/*/*.pdb"))
