@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.5.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -36,9 +36,9 @@ from loguru import logger
 from joblib import Parallel, delayed
 
 from graphqa.data.aminoacids import *
-import graphqa.data.cadscore as cadscore, CadScoreError
+from graphqa.data.cadscore import run_cadscore, CadScoreError
 
-# %% [raw]
+# %%
 # ! rm CASP*/decoys/*.cad.npz
 
 # %%
@@ -53,14 +53,14 @@ def compute_and_save_cad(
 ):
     try:
         run_cadscore(
-            native_path, decoys_dir, sequence_length,
+            native_path, decoys_dir, output_path, sequence_length,
             voronota="voronota_1.21.2744/voronota-cadscore"
         )
     except CadScoreError as e:
         logger.warning(e)
 
 
-with Parallel(n_jobs=20, verbose=1, prefer="threads") as pool:
+with Parallel(n_jobs=30, verbose=1, prefer="threads") as pool:
     missing_targets = [
         dict(
             native_path=f"CASP{target.casp_ed}/native/{target.target_id}.pdb",
@@ -71,6 +71,7 @@ with Parallel(n_jobs=20, verbose=1, prefer="threads") as pool:
         for target in df_natives.itertuples()
         if not Path(f"CASP{target.casp_ed}/decoys/{target.target_id}.cad.npz").is_file()
     ]
+    logger.info(f"Running on {len(missing_targets)} targets")
     pool(
         delayed(compute_and_save_cad)(**target_dict) for target_dict in missing_targets
     )
@@ -81,8 +82,10 @@ cad = set(
     p.with_suffix("").with_suffix("").name
     for p in Path().glob("CASP*/decoys/*.cad.npz")
 )
+
 failed = pdb - cad
-if failed:
+
+if len(failed) > 0:
     logger.warning(f"CAD score failed on {len(failed)} targets")
     if len(failed) < 20:
         for f in failed:
