@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.5.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -16,7 +16,7 @@
 # %% [markdown]
 # # TM_Score, GDT_TS, GDT_HA
 #
-# TM_Score, GDT_TS, GDT_HA scores will be saved as a `CASP*/decoys/<target_id>.tmscore.tsv` file, in tabular format, one row per decoy.
+# TM_Score, GDT_TS, GDT_HA scores will be saved as `CASP*/decoys/<target_id>.tmscore.npz`, one per target.
 #
 # Download and compile the TMscore executable from [Zhang lab](https://zhanglab.ccmb.med.umich.edu/TM-score/):
 # ```bash
@@ -43,15 +43,15 @@ from graphqa.data.tmscore import run_tmscore, TmScoreError
 
 # %%
 @logger.catch(reraise=False)
-def compute_and_save_tm(native_path: str, decoys_dir: str, output_path: str):
+def compute_and_save_tm(native_pdb: str, decoys_dir: str, output_npz: str):
     try:
-        run_tmscore(native_path, decoys_dir, output_path, tmscore="./TMscore")
+        run_tmscore(native_pdb, decoys_dir, output_npz, tmscore="./TMscore")
     except TmScoreError as e:
         logger.warning(e)
 
 
 df_natives = pd.read_csv("natives_casp.csv")
-with Parallel(n_jobs=10, verbose=1, prefer="threads") as pool:
+with Parallel(n_jobs=30, verbose=1, prefer="threads") as pool:
     missing_targets = [
         dict(
             native_pdb=f"CASP{target.casp_ed}/native/{target.target_id}.pdb",
@@ -78,7 +78,7 @@ failed = pdb - tmscore
 
 if len(failed) > 0:
     logger.warning(f"TMscore failed on {len(failed)} targets")
-    if len(failed) < 20:
+    if len(failed) < 30:
         for f in failed:
             logger.warning(f"TMscore failed on: {f}")
 
