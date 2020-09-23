@@ -8,7 +8,6 @@ from typing import overload
 
 import Bio.Align.AlignInfo
 import Bio.AlignIO
-import Bio.Alphabet
 import Bio.PDB
 import Bio.PDB.Structure
 import Bio.SeqIO

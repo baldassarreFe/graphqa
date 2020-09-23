@@ -19,9 +19,9 @@ python -m graphqa.data.tmscore native.pdb decoys/ output.npz
 The output of this script is a dictionary of Numpy arrays in .npz format:
 ```
 {
-    "decoy":   [str, ...]
+    "decoys":  [str, ...]
     "rmsd":    [float, ...]
-    "tmscore": [float, ...]
+    "tm_score": [float, ...]
     "gdt_ts":  [float, ...]
     "gdt_ha":  [float, ...]
 }
@@ -179,9 +179,9 @@ class TmScore(object):
 
 
 class TmScoreOutput(NamedTuple):
-    decoy: str
+    decoys: str
     rmsd: float
-    tmscore: float
+    tm_score: float
     gdt_ts: float
     gdt_ha: float
 
