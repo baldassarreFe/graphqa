@@ -17,38 +17,69 @@ conda activate graphqa
 pip install .
 ```
 
-Run the [DownloadCaspData](notebooks/01-DownloadCaspData.ipynb) notebook to download 
+## Datasets
+
+### Manual download and preprocessing
+The file [`notebooks/README.md`](./notebooks/README.md) contains all information 
+to download and preprocess CASP data for training GraphQA. At a high level, the necessary steps are:
+1. Download protein sequences, official native structures, submitted decoy structures, 
+   submitted QA predictions, and official QA scores from the CASP website
+2. Run DSSP on all submitted tertiary structures to extract secondary structure features
+3. Run JackHMMER on all protein sequences to compute multiple-sequence alignment features against UniRef50
+4. Score all decoys with respect to the respective native structures, specifically computing: 
+   - per-residue: CAD and LDDT scores
+   - per-decoy: GDT_TS, GDT_TS, TM, CAD, LDDT scores
+5. Transform each decoy into a graph data structure suitable for training with PyTorch, including 
+   all input and output features computed in the steps above. At this stage, geometric and sequential 
+   features are also added to the graph (edges, distances and angles) to avoid computing them during training.  
+
+First, run the [DownloadCaspData notebook](./notebooks/01-DownloadCaspData.ipynb) to download 
 raw protein data from the CASP website.
 
-Prepare all preprocessing tools: 
+Then, prepare all preprocessing tools (some of them require a compilation step, others run in Docker): 
 ```bash
+# Docker image for DSSP
+docker build -t dssp 'https://github.com/cmbi/dssp.git#697deab74011bfbd55891e9b8d5d47b8e4ef0e38'
+
+# Sequence database for JackHMMER
+wget 'ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref50/uniref50.fasta.gz'
+tar xzf 'uniref50.fasta.gz'
+
+# Docker image for LDDT score
 docker pull 'registry.scicore.unibas.ch/schwede/openstructure:2.1.0'
 
-git clone https://github.com/cmbi/dssp /tmp/dssp
-pushd /tmp/dssp
-git checkout 697deab74011bfbd55891e9b8d5d47b8e4ef0e38
-docker build -t dssp .
-popd
+# Voronota binaries for CAD score
+wget 'https://github.com/kliment-olechnovic/voronota/releases/download/v1.21.2744/voronota_1.21.2744.tar.gz'
+tar xzf 'voronota_1.21.2744.tar.gz'
 
-wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref50/uniref50.fasta.gz
-tar xzf uniref50.fasta.gz
-
-wget -q 'https://github.com/kliment-olechnovic/voronota/releases/download/v1.21.2744/voronota_1.21.2744.tar.gz'
-tar xzf voronota_1.21.2744.tar.gz
-
-wget -q 'https://zhanglab.ccmb.med.umich.edu/TM-score/TMscore.cpp'
+# TMscore source for GDT_TS, GDT_HA, TM scores
+wget 'https://zhanglab.ccmb.med.umich.edu/TM-score/TMscore.cpp'
 g++ -static -O3 -ffast-math -lm -o TMscore TMscore.cpp 
 ```
 
-Run preprocessing
+Run preprocessing for training:
 ```bash
 for CASP in data/CASP{9..13}; do
-  python -m graphqa.data.preprocess $CASP uniref50.fasta \
-    --train
-    --tmscore ./TMscore
-    --voronota ./voronota_1.21.2744/voronota-cadscore    
+  python -m graphqa.data.preprocess "$CASP" "uniref50.fasta" \
+    --train \
+    --tmscore "./TMscore" \
+    --voronota "./voronota_1.21.2744/voronota-cadscore"
 done
 ```
+
+### Download preprocessed data
+Downloading the data and running the preprocessing steps described above can take a long time.
+To skip these steps and directly download the dataset used for training:
+```bash
+BASE_URL='https://kth.box.com/shared/static/'
+wget -O GraphQA-CASP9.tar.gz  "${BASE_URL}fm2weje86d7nvulbconzf3pzmmhl2tmm.gz"
+wget -O GraphQA-CASP10.tar.gz "${BASE_URL}jdgns10ehenjur1y5dw2lj275aggeu33.gz"
+wget -O GraphQA-CASP11.tar.gz "${BASE_URL}tls5yxhsycqpid8pp6i3jv7ew7h0xz6l.gz"
+wget -O GraphQA-CASP12.tar.gz "${BASE_URL}cbm3k5ladnq5i42q5fdcbztxwaukde9x.gz"
+wget -O GraphQA-CASP13.tar.gz "${BASE_URL}f66fjw67urwxcovfrpar5jd4diyayshl.gz"
+```
+
+Extract the contents of the tar archives in the corresponding folders under `/data`.
 
 ## Training
 Either train with a predefined configuration
