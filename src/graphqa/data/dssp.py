@@ -192,8 +192,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Run DSSP over a folder or a tar archive"
     )
-    parser.add_argument("input", help="Directory or tar archive with .pdb files")
-    parser.add_argument("output", help="Directory for output .dssp files")
+    parser.add_argument("input_dir_or_tar", help="Directory or tar archive with .pdb files")
+    parser.add_argument("output_dir", help="Directory for output .dssp files")
     parser.add_argument("--threads", type=int, default=1, help="Number of threads")
     parser.add_argument("--verbose", "-v", action="count", default=0)
     parser.add_argument(
