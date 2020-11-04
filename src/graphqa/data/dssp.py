@@ -77,7 +77,10 @@ class DsspDocker(object):
         if self.container:
             self.container.stop(timeout=10)
         if self.tmp_dir:
-            self.tmp_dir.cleanup()
+            try:
+                self.tmp_dir.cleanup()
+            except Exception as e:
+                logger.warning(f"Could not clean up temporary directory {self.tmp_dir.name}: {e}")
 
     @overload
     def run(self, path: Path) -> Path:
