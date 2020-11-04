@@ -117,7 +117,7 @@ def main():
 
     # Finally, build a graph data structure for PyTorch
     pgb = ProteinGraphBuilder(max_distance=12, max_hops=5)
-    for target_id, target_len in zip(target_ids):
+    for target_id in target_ids:
         logger.info(f"Processing {target_id}")
         decoys_dir = paths.decoys / target_id
         if not decoys_dir.is_dir():
@@ -141,7 +141,7 @@ def main():
             df_decoy_feats = load_decoy_feats(decoy_pdb, decoy_dssp, len(sequence_np))
 
             if args.train:
-                df_qa_local, df_qa_global = load_df_qa(paths.decoys.joinpath(target_id))
+                df_qa_global, df_qa_local = load_df_qa(paths.decoys.joinpath(target_id))
             else:
                 df_qa_local = None
                 df_qa_global = None

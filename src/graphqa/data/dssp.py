@@ -8,7 +8,6 @@ from typing import overload
 
 import Bio.Align.AlignInfo
 import Bio.AlignIO
-import Bio.Alphabet
 import Bio.PDB
 import Bio.PDB.Structure
 import Bio.SeqIO
@@ -78,7 +77,10 @@ class DsspDocker(object):
         if self.container:
             self.container.stop(timeout=10)
         if self.tmp_dir:
-            self.tmp_dir.cleanup()
+            try:
+                self.tmp_dir.cleanup()
+            except Exception as e:
+                logger.warning(f"Could not clean up temporary directory {self.tmp_dir.name}: {e}")
 
     @overload
     def run(self, path: Path) -> Path:
@@ -193,8 +195,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Run DSSP over a folder or a tar archive"
     )
-    parser.add_argument("input", help="Directory or tar archive with .pdb files")
-    parser.add_argument("output", help="Directory for output .dssp files")
+    parser.add_argument("input_dir_or_tar", help="Directory or tar archive with .pdb files")
+    parser.add_argument("output_dir", help="Directory for output .dssp files")
     parser.add_argument("--threads", type=int, default=1, help="Number of threads")
     parser.add_argument("--verbose", "-v", action="count", default=0)
     parser.add_argument(

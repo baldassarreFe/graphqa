@@ -86,8 +86,8 @@ class RadiusGraphWithNans(object):
         edge_index = radius_graph(
             pos, self.r, batch, self.loop, self.max_num_neighbors,
         )
-        na_sender = torch.any(edge_index[0] == torch.nonzero(nans), dim=0)
-        na_receiver = torch.any(edge_index[0] == torch.nonzero(nans), dim=0)
+        na_sender = torch.any(edge_index[0] == torch.nonzero(nans, as_tuple=False), dim=0)
+        na_receiver = torch.any(edge_index[0] == torch.nonzero(nans, as_tuple=False), dim=0)
         drop = na_sender | na_receiver
 
         data.edge_index = edge_index[:, ~drop]
