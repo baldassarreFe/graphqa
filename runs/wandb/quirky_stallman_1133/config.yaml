@@ -1,0 +1,90 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.8.32
+    code_path: code/proteins/src/graphqa/train.py
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    python_version: 3.8.1
+checkpoint:
+  desc: null
+  value:
+    folder: /Midgard/home/fbaldassarre/experiments/proteins/runs
+    keep: 2
+    mode: max
+    monitor: val/global_per_target/gdtts/R
+    period: 1
+dataloader:
+  desc: null
+  value:
+    batch_size: 16
+    num_workers: 4
+datasets:
+  desc: null
+  value:
+    folder: /local_storage/datasets/CASP
+    test:
+      casp_editions:
+      - 13
+    trainval:
+      casp_editions:
+      - 9
+      - 10
+      - 11
+      - 12
+      seed: 9738
+      split: 0.85
+losses:
+  desc: null
+  value:
+    weight_global: 1
+    weight_local: 20
+model:
+  desc: null
+  value:
+    embeddings:
+      aa: 64
+      rbf: 32
+      sep: 64
+      ss: 64
+    encoder:
+      out_edge_feats: 128
+      out_node_feats: 64
+    mp:
+      batch_norm: true
+      dropout: 0.2
+      in_global_feats: 512
+      layers: 3
+      out_edge_feats: 16
+      out_global_feats: 32
+      out_node_feats: 64
+      scatter: mean
+    readout:
+      concat: false
+optimizer:
+  desc: null
+  value:
+    lr: 0.001
+    name: Adam
+    weight_decay: 1.0e-05
+scheduler:
+  desc: null
+  value:
+    gamma: 0.5
+    name: StepLR
+    step_size: 250
+session:
+  desc: null
+  value:
+    accumulate_grad: 1
+    device: cuda
+    early_stopping:
+      mode: max
+      monitor: val/global_per_target/gdtts/R
+      patience: 5
+    max_epochs: 600
+    seed: 9738
+    val_every: 50
