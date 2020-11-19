@@ -17,6 +17,10 @@ conda activate graphqa
 pip install .
 ```
 
+## Prediction
+
+To make predictions using GraphQA, follow the instructions in [`predictions.md`](./prediction.md).
+
 ## Datasets
 
 ### Manual download and preprocessing
