@@ -56,4 +56,5 @@ def add_logfile(path: Union[str, Path], format=None, filter=None):
         filter = _default_filter
     if format is None:
         format = _default_format
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     loguru.logger.add(sink=path, format=format, colorize=False, filter=filter, mode="a")

@@ -64,7 +64,7 @@ def main():
     import sys
 
     conf = parse_config(sys.argv[1:])
-    print(conf.pretty())
+    print(OmegaConf.to_yaml(conf))
 
 
 if __name__ == "__main__":
