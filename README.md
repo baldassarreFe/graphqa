@@ -1,3 +1,5 @@
+
+
 # GraphQA: Protein Model Quality Assessment using Graph Convolutional Networks
 
 ## Evaluation server
@@ -88,7 +90,7 @@ Extract the contents of the tar archives in the corresponding folders under `/da
 ## Training
 Either train with a predefined configuration
 ```bash
-python -m proteins.train config/train.yaml --model config/model.yaml --session config/session.yaml [in_memory=yes]
+python -m graphqa.train config/train.yaml --model config/model.yaml --session config/session.yaml [in_memory=yes]
 ```
 
 Or define all parameters manually
@@ -150,7 +152,7 @@ tags+=("sep${separation_enc}")
 tags+=("dist${distance_enc}")
 tags="[$(IFS=, ; echo "${tags[*]}")]"
 
-python -m proteins.train \
+python -m graphqa.train \
     tags="${tags}" \
     --data \
         cutoff="${cutoff}" \
@@ -208,7 +210,7 @@ Config files for ablation studies are self-contained and can just be run as:
 NUM_RUNS_PER_STUDY=5
 for f in config/ablations/{nodes,edges,layersvscutoff,architecture,localglobalscore,separation_encoding}/*.yaml; do
     for i in $(seq ${NUM_RUNS_PER_STUDY}); do
-        python -m proteins.train "${f}"
+        python -m graphqa.train "${f}"
     done
 done
 ```
@@ -218,7 +220,7 @@ Test GraphQA with all features (residues, multiple-sequence alignment, DSSP):
 ```bash
 RUN_PATH='runs/l6_128-512-512_16-64-32_res64_rbf32_sepcategorical_dr.2_bnno_lr.001_wd.00001_ll1_lg1_lr0_co8_allfeats_wonderful_mclean'
 for data in $(find 'data/' -maxdepth 1 -mindepth 1 -type d); do
-    python -m proteins.test \
+    python -m graphqa.test \
       "${RUN_PATH}/experiment.latest.yaml" \
       --model state_dict="${RUN_PATH}/model.latest.pt" \
       --test \
@@ -234,7 +236,7 @@ Test GraphQA with residue identity features only:
 ```bash
 RUN_PATH='runs/residueonly_l8_128-512-512_16-64-64_dr.1_bnno_lr.001_wd.00001_ll1_ll5_co8_priceless_hawking'
 for data in $(find 'data/' -maxdepth 1 -mindepth 1 -type d); do
-    python -m proteins.test \
+    python -m graphqa.test \
       "${RUN_PATH}/experiment.latest.yaml" \
       --model state_dict="${RUN_PATH}/model.latest.pt" \
       --test \
